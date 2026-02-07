@@ -8,7 +8,6 @@ export interface FactCheck {
   claim: string;
   verdict: 'Verdadero' | 'Falso' | 'Engañoso' | 'Inconsistente' | 'Dudoso';
   explanation: string;
-  sources?: { title: string, url: string }[];
 }
 
 export interface TopicDetail {
@@ -22,7 +21,6 @@ export interface AnalysisResult {
   suggestedHeadlines: string[];
   socialThreads: string[];
   factChecks: FactCheck[];
-  manualFactChecks?: FactCheck[];
 }
 
 export interface PressReleaseResult {
@@ -36,12 +34,27 @@ export interface PressReleaseResult {
   finalBody?: string;
 }
 
+export interface NewsItem {
+  headline: string;
+  summary: string;
+  url?: string;
+}
 
+export interface NewspaperSummary {
+  source: string;
+  news: NewsItem[];
+}
+
+export interface PressSummaryResult {
+  date: string;
+  summaries: NewspaperSummary[];
+}
 
 export enum AppMode {
   AUDIO = 'AUDIO',
   PRESS_RELEASE = 'PRESS_RELEASE',
   WRITING_ASSISTANT = 'WRITING_ASSISTANT',
+  PRESS_SUMMARY = 'PRESS_SUMMARY',
 }
 
 export enum AppStatus {
@@ -62,5 +75,5 @@ export interface HistoryItem {
   date: string;
   fileName: string;
   mode: AppMode;
-  data: AnalysisResult | PressReleaseResult | any;
+  data: AnalysisResult | PressReleaseResult | PressSummaryResult | any;
 }

@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
-import { Mic2, FileText, ChevronRight, Loader2, Newspaper, History as HistoryIcon, Target, Clock, Layout, PenTool, Settings } from 'lucide-react';
+import { Mic2, FileText, ChevronRight, Loader2, Newspaper, History as HistoryIcon, Target, Clock, Layout, PenTool, MapPin } from 'lucide-react';
 import { FileUploader } from './components/FileUploader';
 import { AnalysisResult } from './components/AnalysisResult';
 import { PressReleaseResult } from './components/PressReleaseResult';
 import { WritingAssistant } from './components/WritingAssistant';
-
+import { PressSummary } from './components/PressSummary';
 import { HistoryDrawer } from './components/HistoryDrawer';
-import { AppStatus, FileState, AnalysisResult as AnalysisResultType, PressReleaseResult as PressReleaseResultType, AppMode, HistoryItem } from './types';
+import { AppStatus, FileState, AnalysisResult as AnalysisResultType, PressReleaseResult as PressReleaseResultType, AppMode, HistoryItem, PressSummaryResult } from './types';
 import { geminiService } from './services/geminiService';
 
 const RobotLogo = ({ className }: { className?: string }) => (
@@ -41,24 +41,9 @@ const App: React.FC = () => {
   const [userAngle, setUserAngle] = useState('');
   const [audioResult, setAudioResult] = useState<AnalysisResultType | null>(null);
   const [pressResult, setPressResult] = useState<PressReleaseResultType | null>(null);
-
+  const [summaryResult, setSummaryResult] = useState<PressSummaryResult | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
-
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [apiKey, setApiKey] = useState('');
-
-  useEffect(() => {
-    const storedKey = localStorage.getItem('GEMINI_API_KEY');
-    if (storedKey) setApiKey(storedKey);
-  }, []);
-
-  const handleSaveApiKey = () => {
-    localStorage.setItem('GEMINI_API_KEY', apiKey);
-    setIsSettingsOpen(false);
-    alert('API Key guardada correctamente.');
-    window.location.reload(); // Reload to ensure services pick up the new key if needed (though our refactor handles dynamic key, reload is safer for state reset)
-  };
 
   useEffect(() => {
     const saved = localStorage.getItem('servimedia_history_v5'); // Updated version key
@@ -97,9 +82,23 @@ const App: React.FC = () => {
   const handleModeChange = (newMode: AppMode) => {
     setMode(newMode);
     handleClear();
+    if (newMode === AppMode.PRESS_SUMMARY) {
+      startPressSummary();
+    }
   };
 
-
+  const startPressSummary = async () => {
+    setStatus(AppStatus.PROCESSING);
+    try {
+      const data = await geminiService.fetchMadridPressSummary();
+      setSummaryResult(data);
+      saveToHistory(data, AppMode.PRESS_SUMMARY, `Resumen Madrid ${new Date().toLocaleDateString()}`);
+      setStatus(AppStatus.COMPLETED);
+    } catch (e) {
+      console.error(e);
+      setStatus(AppStatus.ERROR);
+    }
+  };
 
   const handleFileSelected = (newState: FileState) => {
     setFileState(newState);
@@ -111,8 +110,8 @@ const App: React.FC = () => {
   const handleClear = () => {
     setFileState({ file: null, base64: null, mimeType: null });
     setAudioResult(null);
-    setAudioResult(null);
     setPressResult(null);
+    setSummaryResult(null);
     setStatus(AppStatus.IDLE);
     setUserAngle('');
   };
@@ -170,6 +169,9 @@ const App: React.FC = () => {
               <button onClick={() => handleModeChange(AppMode.WRITING_ASSISTANT)} className={`flex items-center gap-2 px-4 h-full border-b-4 transition-all font-black text-[10px] uppercase tracking-[0.1em] ${mode === AppMode.WRITING_ASSISTANT ? 'border-blue-500 text-blue-500 bg-blue-500/5' : 'border-transparent text-servimedia-gray hover:text-blue-500'}`}>
                 <PenTool className="w-3.5 h-3.5" /> Asistente Redacción
               </button>
+              <button onClick={() => handleModeChange(AppMode.PRESS_SUMMARY)} className={`flex items-center gap-2 px-4 h-full border-b-4 transition-all font-black text-[10px] uppercase tracking-[0.1em] ${mode === AppMode.PRESS_SUMMARY ? 'border-blue-800 text-blue-800 bg-blue-800/5' : 'border-transparent text-servimedia-gray hover:text-blue-800'}`}>
+                <MapPin className="w-3.5 h-3.5" /> Resumen Madrid <span className="text-[8px] font-black ml-1">(Beta)</span>
+              </button>
             </div>
 
             <div className="flex items-center gap-6">
@@ -177,46 +179,15 @@ const App: React.FC = () => {
                 <HistoryIcon className="w-5 h-5" />
                 <span className="hidden lg:inline">Archivo</span>
               </button>
-              <button onClick={() => setIsSettingsOpen(true)} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40 hover:text-servimedia-pink transition-colors">
-                <Settings className="w-5 h-5" />
-                <span className="hidden lg:inline">Ajustes</span>
-              </button>
             </div>
           </div>
         </div>
       </nav>
 
-      {isSettingsOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl space-y-6">
-            <h2 className="text-2xl font-black text-servimedia-gray uppercase tracking-tighter">Configuración</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-black uppercase tracking-widest text-servimedia-gray/40 mb-2">Gemini API Key</label>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Pegar tu API Key aquí"
-                  className="w-full p-4 bg-servimedia-light border-none rounded-xl focus:ring-2 focus:ring-servimedia-pink/20 outline-none font-mono text-sm"
-                />
-                <p className="text-[10px] text-servimedia-gray/40 mt-2">
-                  La API Key se guarda localmente en tu navegador.
-                </p>
-              </div>
-            </div>
-            <div className="flex justify-end gap-4">
-              <button onClick={() => setIsSettingsOpen(false)} className="px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest text-servimedia-gray/40 hover:bg-servimedia-light transition-colors">Cancelar</button>
-              <button onClick={handleSaveApiKey} className="px-6 py-3 bg-servimedia-pink text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:shadow-lg hover:shadow-servimedia-pink/20 transition-all">Guardar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <HistoryDrawer isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} history={history} onSelect={(item) => { setMode(item.mode); if (item.mode === AppMode.AUDIO) setAudioResult(item.data as AnalysisResultType); else if (item.mode === AppMode.PRESS_RELEASE) setPressResult(item.data as PressReleaseResultType); setStatus(AppStatus.COMPLETED); setIsHistoryOpen(false); }} onDelete={(id) => { const updated = history.filter(h => h.id !== id); setHistory(updated); localStorage.setItem('servimedia_history_v5', JSON.stringify(updated)); }} />
+      <HistoryDrawer isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} history={history} onSelect={(item) => { setMode(item.mode); if (item.mode === AppMode.AUDIO) setAudioResult(item.data as AnalysisResultType); else if (item.mode === AppMode.PRESS_RELEASE) setPressResult(item.data as PressReleaseResultType); else if (item.mode === AppMode.PRESS_SUMMARY) setSummaryResult(item.data as PressSummaryResult); setStatus(AppStatus.COMPLETED); setIsHistoryOpen(false); }} onDelete={(id) => { const updated = history.filter(h => h.id !== id); setHistory(updated); localStorage.setItem('servimedia_history_v5', JSON.stringify(updated)); }} />
 
       <main className="flex-grow max-w-7xl mx-auto w-full py-16 px-4 lg:px-8">
-        {status === AppStatus.IDLE && mode !== AppMode.WRITING_ASSISTANT && (
+        {status === AppStatus.IDLE && mode !== AppMode.WRITING_ASSISTANT && mode !== AppMode.PRESS_SUMMARY && (
           <div className="text-center mb-16 animate-in fade-in duration-1000">
             <h1 className="text-7xl font-black tracking-tighter text-servimedia-gray mb-6 leading-tight">
               {mode === AppMode.AUDIO ? (<>De <span className="text-servimedia-pink">Audio</span> a Texto</>) : (<>Procesador <span className="text-servimedia-orange">Notas de Prensa</span></>)}
@@ -228,7 +199,27 @@ const App: React.FC = () => {
         )}
 
         {mode === AppMode.WRITING_ASSISTANT && <WritingAssistant />}
-
+        
+        {mode === AppMode.PRESS_SUMMARY && (
+          <>
+            {status === AppStatus.PROCESSING && (
+              <div className="flex flex-col items-center justify-center py-40 animate-in zoom-in-95">
+                <div className="w-28 h-28 border-8 border-t-transparent rounded-full animate-spin mb-12 border-blue-800"></div>
+                <h2 className="text-4xl font-black text-servimedia-gray uppercase tracking-tighter">Recorriendo Portadas...</h2>
+                <p className="text-servimedia-gray/20 font-bold text-sm uppercase tracking-[0.4em] mt-4">Conexión con diarios de Madrid</p>
+              </div>
+            )}
+            {status === AppStatus.COMPLETED && summaryResult && (
+              <PressSummary result={summaryResult} onRefresh={startPressSummary} isLoading={status === AppStatus.PROCESSING} />
+            )}
+            {status === AppStatus.ERROR && (
+              <div className="text-center py-40">
+                <p className="text-2xl font-black text-red-500 uppercase tracking-tighter mb-4">Error al conectar con la prensa</p>
+                <button onClick={startPressSummary} className="px-10 py-4 bg-servimedia-gray text-white rounded-full font-black text-xs uppercase tracking-widest">Reintentar conexión</button>
+              </div>
+            )}
+          </>
+        )}
 
         {(mode === AppMode.AUDIO || mode === AppMode.PRESS_RELEASE) && (
           <>
@@ -254,7 +245,7 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {status === AppStatus.PROCESSING && (
+            {status === AppStatus.PROCESSING && mode !== AppMode.PRESS_SUMMARY && (
               <div className="flex flex-col items-center justify-center py-40 animate-in zoom-in-95">
                 <div className={`w-28 h-28 border-8 border-t-transparent rounded-full animate-spin mb-12 ${mode === AppMode.AUDIO ? 'border-servimedia-pink' : 'border-servimedia-orange'}`}></div>
                 <h2 className="text-4xl font-black text-servimedia-gray uppercase tracking-tighter">Procesando en Redacción...</h2>
@@ -292,24 +283,24 @@ const App: React.FC = () => {
 
       <footer className="bg-white border-t border-servimedia-border py-20 mt-auto">
         <div className="max-w-7xl mx-auto px-8 flex flex-col items-center gap-12">
-          <div className="opacity-30 flex items-center gap-4 grayscale hover:grayscale-0 transition-all duration-700">
-            <RobotLogo className="w-12 h-12" />
-            <div className="flex items-center text-2xl font-black tracking-tighter leading-none">
-              <span className="text-servimedia-pink">servimed-</span>
-              <span className="text-servimedia-orange">IA</span>
-            </div>
-          </div>
-          <div className="text-center">
-            <p className="text-[10px] font-black text-servimedia-gray/20 uppercase tracking-[0.5em] mb-4">
-              Agencia de Noticias Servimedia • Innovación Editorial
-            </p>
-            <p className="text-[10px] font-bold text-servimedia-gray/10 uppercase tracking-[0.2em]">
-              © {new Date().getFullYear()} Todos los derechos reservados • Desarrollado para Servimedia
-            </p>
-          </div>
+           <div className="opacity-30 flex items-center gap-4 grayscale hover:grayscale-0 transition-all duration-700">
+              <RobotLogo className="w-12 h-12" />
+              <div className="flex items-center text-2xl font-black tracking-tighter leading-none">
+                <span className="text-servimedia-pink">servimed-</span>
+                <span className="text-servimedia-orange">IA</span>
+              </div>
+           </div>
+           <div className="text-center">
+             <p className="text-[10px] font-black text-servimedia-gray/20 uppercase tracking-[0.5em] mb-4">
+               Agencia de Noticias Servimedia • Innovación Editorial
+             </p>
+             <p className="text-[10px] font-bold text-servimedia-gray/10 uppercase tracking-[0.2em]">
+               © {new Date().getFullYear()} Todos los derechos reservados • Desarrollado para Servimedia
+             </p>
+           </div>
         </div>
       </footer>
-    </div >
+    </div>
   );
 };
 
