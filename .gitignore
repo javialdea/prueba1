@@ -1,0 +1,6 @@
+# Node modules
+enode_modules/
+
+# Logs
+logs/
+npm-debug.log*
