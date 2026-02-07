@@ -734,23 +734,31 @@ Character number: `+e.characterNumber},t.prototype.lineNumber=function(){return 
           5. PERIODISMO: Genera titulares e hilos de RRSS con contexto.
           
           DEBES DEVOLVER UN JSON VÁLIDO CON LA ESTRUCTURA SCHEMA DEFINIDA.`}]},config:{temperature:.1,responseMimeType:"application/json",responseSchema:{type:je.OBJECT,properties:{transcription:{type:je.ARRAY,items:{type:je.OBJECT,properties:{timestamp:{type:je.STRING},text:{type:je.STRING}},required:["timestamp","text"]}},factChecks:{type:je.ARRAY,items:{type:je.OBJECT,properties:{claim:{type:je.STRING},verdict:{type:je.STRING,enum:["Verdadero","Falso","Engañoso","Inconsistente","Dudoso"]},explanation:{type:je.STRING}},required:["claim","verdict","explanation"]}},topics:{type:je.ARRAY,items:{type:je.OBJECT,properties:{name:{type:je.STRING},description:{type:je.STRING}},required:["name","description"]}},suggestedHeadlines:{type:je.ARRAY,items:{type:je.STRING}},socialThreads:{type:je.ARRAY,items:{type:je.STRING}}},required:["transcription","factChecks","topics","suggestedHeadlines","socialThreads"]}}})).text;if(!l)throw new Error("La IA no devolvió contenido.");return JSON.parse(l)})},K4=async()=>{const t=`
-    Visita cada una de estas URLs de las secciones de Madrid de los diarios. Para cada URL, extrae los 5 primeros titulares de noticias que encuentres en la página. Asegúrate de que sean titulares textuales de noticias. Para cada titular, proporciona un resumen muy breve (una frase) y su URL si está disponible.
-
-    URLs a consultar:
+    Actúa como un lector de prensa experto en tiempo real. Tu misión es leer las PORTADAS de las secciones de MADRID de los siguientes diarios digitales AHORA MISMO.
+    
+    Para cada diario, identifica y extrae EXCLUSIVAMENTE las 5 noticias MÁS IMPORTANTES (las de mayor jerarquía visual: noticia de apertura, foto principal, y columnas superiores).
+    
+    URLs a analizar:
     - Europa Press Madrid: https://www.europapress.es/madrid/
     - El Mundo Madrid: https://www.elmundo.es/madrid.html
     - El Diario Madrid: https://www.eldiario.es/madrid/
     - 20 Minutos Madrid: https://www.20minutos.es/madrid/
     - El País Madrid: https://elpais.com/espana/madrid/
 
+    Instrucciones CRÍTICAS de jerarquía:
+    1. La noticia #1 DEBE ser la de apertura (la más grande/arriba).
+    2. Las noticias #2-#5 deben ser las siguientes en orden de lectura (arriba a abajo, izquierda a derecha).
+    3. Ignora menús, publicidad, listas de "lo más leído" o secciones de opinión si no son portada.
+    4. Usa la fecha de HOY. Si una noticia es antigua, IGNÓRALA.
+
     DEBES DEVOLVER UN JSON VÁLIDO CON LA SIGUIENTE ESTRUCTURA:
     {
-      "date": "Fecha de hoy",
+      "date": "Fecha de hoy (DD/MM/AAAA)",
       "summaries": [
         {
           "source": "Nombre del diario",
           "news": [
-            { "headline": "Titular", "summary": "Resumen", "url": "URL si está disponible" }
+            { "headline": "Titular Exacto", "summary": "Resumen de 1 frase", "url": "URL de la noticia (si la encuentras)" }
           ]
         }
       ]
