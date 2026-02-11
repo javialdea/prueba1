@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/supabase';
-import { LogIn, UserPlus, Loader2, X, Mail, Lock } from 'lucide-react';
+import { LogIn, UserPlus, Loader2, X, Mail, Lock, Chrome } from 'lucide-react';
 
 interface AuthModalProps {
     onClose: () => void;
@@ -12,6 +12,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [isSignUp, setIsSignUp] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const handleGoogleLogin = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin
+                }
+            });
+            if (error) throw error;
+        } catch (err: any) {
+            setError(err.message || "Error al conectar con Google");
+            setIsLoading(false);
+        }
+    };
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -94,6 +111,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
                     >
                         {isLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : (isSignUp ? <UserPlus className="w-6 h-6" /> : <LogIn className="w-6 h-6" />)}
                         {isSignUp ? 'Crear Cuenta' : 'Iniciar Sesión'}
+                    </button>
+
+                    <div className="relative py-4">
+                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-servimedia-light"></div></div>
+                        <div className="relative flex justify-center text-[8px] uppercase font-black text-servimedia-gray/20 tracking-widest bg-white px-2">O continuar con</div>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={handleGoogleLogin}
+                        disabled={isLoading}
+                        className="w-full bg-white border-2 border-servimedia-light text-servimedia-gray py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-servimedia-light transition-all flex items-center justify-center gap-3"
+                    >
+                        <Chrome className="w-5 h-5 text-servimedia-orange" />
+                        Google
                     </button>
 
                     <button

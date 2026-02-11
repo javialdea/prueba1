@@ -9,7 +9,7 @@ import { AppHeader } from './components/AppHeader';
 import { AppFooter } from './components/AppFooter';
 import { SettingsModal } from './components/SettingsModal';
 import { AudioQueue } from './components/AudioQueue';
-import { AuthModal } from './components/AuthModal';
+import { LandingPage } from './components/LandingPage';
 import { supabase } from './services/supabase';
 import { Session } from '@supabase/supabase-js';
 import { AppStatus, FileState, AnalysisResult as AnalysisResultType, PressReleaseResult as PressReleaseResultType, AppMode, HistoryItem, TranscriptionJob } from './types';
@@ -37,10 +37,12 @@ const App: React.FC = () => {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      if (session) setIsAuthOpen(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session) setIsAuthOpen(false);
     });
 
     return () => subscription.unsubscribe();
@@ -48,9 +50,26 @@ const App: React.FC = () => {
   const [apiKey, setApiKey] = useState('');
 
   useEffect(() => {
-    const storedKey = localStorage.getItem('GEMINI_API_KEY');
-    if (storedKey) setApiKey(storedKey);
-  }, []);
+    const fetchProfile = async () => {
+      if (!session?.user) return;
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('gemini_api_key')
+        .eq('id', session.user.id)
+        .single();
+
+      if (!error && data?.gemini_api_key) {
+        setApiKey(data.gemini_api_key);
+        localStorage.setItem('GEMINI_API_KEY', data.gemini_api_key);
+      } else {
+        const storedKey = localStorage.getItem('GEMINI_API_KEY');
+        if (storedKey) setApiKey(storedKey);
+      }
+    };
+
+    fetchProfile();
+  }, [session]);
 
   // Effect to process pending audio jobs
   useEffect(() => {
@@ -269,6 +288,15 @@ const App: React.FC = () => {
     }
   };
 
+  if (!session) {
+    return (
+      <>
+        <LandingPage onLogin={() => setIsAuthOpen(true)} />
+        {isAuthOpen && <AuthModal onClose={() => setIsAuthOpen(false)} />}
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-servimedia-light font-sans">
       <div className="h-2 w-full flex">
@@ -286,6 +314,7 @@ const App: React.FC = () => {
           await supabase.auth.signOut();
           setHistory([]);
           setAudioJobs([]);
+          setIsAuthOpen(false);
           window.location.reload();
         }}
         onLogoClick={handleClear}
@@ -296,10 +325,16 @@ const App: React.FC = () => {
         <SettingsModal
           apiKey={apiKey}
           setApiKey={setApiKey}
-          onSave={() => {
+          onSave={async () => {
             localStorage.setItem('GEMINI_API_KEY', apiKey);
+            if (session?.user) {
+              await supabase.from('profiles').upsert({
+                id: session.user.id,
+                gemini_api_key: apiKey,
+                updated_at: new Date().toISOString()
+              });
+            }
             setIsSettingsOpen(false);
-            window.location.reload();
           }}
           onClose={() => setIsSettingsOpen(false)}
         />
@@ -319,11 +354,11 @@ const App: React.FC = () => {
             } else {
               const newJob: TranscriptionJob = {
                 id: crypto.randomUUID(),
-                file: new File([], item.fileName),
-                base64: '',
+                file: new File([], item.fileName), // Placeholder
+                base64: '', // We don't store base64 in history
                 mimeType: '',
                 status: AppStatus.COMPLETED,
-                result: item.data as AnalysisResultType,
+                result: item.data,
                 timestamp: new Date(item.date).toLocaleTimeString()
               };
               setAudioJobs(prev => [...prev, newJob]);
@@ -335,10 +370,13 @@ const App: React.FC = () => {
           }
           setIsHistoryOpen(false);
         }}
-        onDelete={(id) => {
+        onDelete={async (id) => {
           const updated = history.filter(h => h.id !== id);
           setHistory(updated);
           localStorage.setItem('servimedia_history_v5', JSON.stringify(updated));
+          if (session?.user) {
+            await supabase.from('audio_jobs').delete().eq('id', id);
+          }
         }}
       />
 
