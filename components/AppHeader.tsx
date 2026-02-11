@@ -91,16 +91,27 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                             <Settings className="w-5 h-5" />
                             <span className="hidden lg:inline">Ajustes</span>
                         </button>
-                        <button
-                            onClick={onAuthOpen}
-                            className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all px-6 py-3 rounded-full ${userEmail ? 'text-servimedia-orange bg-servimedia-orange/5' : 'text-white bg-servimedia-orange shadow-lg shadow-servimedia-orange/20 hover:scale-105'}`}
-                        >
-                            <User className="w-5 h-5" />
-                            <span className="hidden lg:inline">{userEmail ? userEmail.split('@')[0] : 'Entrar'}</span>
-                        </button>
-                        {userEmail && (
-                            <button onClick={onLogout} title="Cerrar Sesión" className="p-3 text-servimedia-gray/20 hover:text-red-500 transition-all hover:bg-red-50 rounded-full">
-                                <LogOut className="w-5 h-5" />
+                        {userEmail ? (
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2 bg-servimedia-light px-4 py-2 rounded-full border border-servimedia-border">
+                                    <User className="w-4 h-4 text-servimedia-pink" />
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-servimedia-gray/60">{userEmail.split('@')[0]}</span>
+                                </div>
+                                <button
+                                    onClick={onLogout}
+                                    className="p-3 hover:bg-red-50 text-servimedia-gray/20 hover:text-red-500 rounded-full transition-all group"
+                                    title="Cerrar Sesión"
+                                >
+                                    <LogIn className="w-5 h-5 rotate-180 group-hover:scale-110 transition-transform" />
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={onAuthOpen}
+                                className="flex items-center gap-3 bg-servimedia-gray px-6 py-3 rounded-full text-white hover:bg-servimedia-pink transition-all shadow-lg shadow-servimedia-gray/10 group active:scale-95"
+                            >
+                                <LogIn className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Acceso Cloud</span>
                             </button>
                         )}
                     </div>

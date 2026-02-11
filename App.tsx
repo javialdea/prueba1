@@ -10,6 +10,7 @@ import { AppFooter } from './components/AppFooter';
 import { SettingsModal } from './components/SettingsModal';
 import { AudioQueue } from './components/AudioQueue';
 import { LandingPage } from './components/LandingPage';
+import { AuthModal } from './components/AuthModal';
 import { supabase } from './services/supabase';
 import { Session } from '@supabase/supabase-js';
 import { AppStatus, FileState, AnalysisResult as AnalysisResultType, PressReleaseResult as PressReleaseResultType, AppMode, HistoryItem, TranscriptionJob } from './types';
