@@ -23,6 +23,7 @@ export interface AnalysisResult {
   socialThreads: string[];
   factChecks: FactCheck[];
   manualFactChecks?: FactCheck[];
+  isVerifyingManual?: boolean;
 }
 
 export interface PressReleaseResult {
@@ -62,5 +63,15 @@ export interface HistoryItem {
   date: string;
   fileName: string;
   mode: AppMode;
-  data: AnalysisResult | PressReleaseResult | any;
+  data: AnalysisResult | PressReleaseResult;
+}
+
+export interface TranscriptionJob {
+  id: string;
+  file: File;
+  base64: string;
+  mimeType: string;
+  status: AppStatus;
+  result?: AnalysisResult;
+  timestamp: string;
 }

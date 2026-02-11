@@ -8,17 +8,19 @@ import { jsPDF } from 'https://esm.sh/jspdf@2.5.1';
 interface AnalysisResultProps {
   result: AnalysisResultType;
   audioFile: File | null;
+  onManualVerify?: (claim: string) => void;
 }
 
 type Tab = 'transcript' | 'chat' | 'verificador' | 'social';
 
-export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFile }) => {
+export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFile, onManualVerify }) => {
   const mediaRef = useRef<HTMLMediaElement>(null);
   const [activeTab, setActiveTab] = useState<Tab>('transcript');
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<{ role: string, text: string }[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
 
   const isVideo = audioFile?.type.startsWith('video/');
   const mediaUrl = useMemo(() => audioFile ? URL.createObjectURL(audioFile) : null, [audioFile]);
@@ -29,12 +31,15 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
 
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
+    const onTimeUpdate = () => setCurrentTime(media.currentTime);
 
     media.addEventListener('play', onPlay);
     media.addEventListener('pause', onPause);
+    media.addEventListener('timeupdate', onTimeUpdate);
     return () => {
       media.removeEventListener('play', onPlay);
       media.removeEventListener('pause', onPause);
+      media.removeEventListener('timeupdate', onTimeUpdate);
     };
   }, [mediaUrl]);
 
@@ -51,9 +56,33 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
       const seconds = parts.length === 2
         ? parseInt(parts[0]) * 60 + parseInt(parts[1])
         : parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
-      mediaRef.current.currentTime = seconds;
-      mediaRef.current.play();
+
+      // If clicking same segment that is already playing, toggle pause
+      const isCurrentlyThisTime = Math.abs(mediaRef.current.currentTime - seconds) < 2;
+      if (isCurrentlyThisTime && isPlaying) {
+        mediaRef.current.pause();
+      } else {
+        mediaRef.current.currentTime = seconds;
+        mediaRef.current.play();
+      }
     }
+  };
+
+  const isSegmentActive = (timestamp: string, nextTimestamp?: string) => {
+    const parts = timestamp.split(':');
+    const start = parts.length === 2
+      ? parseInt(parts[0]) * 60 + parseInt(parts[1])
+      : parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
+
+    let end = Infinity;
+    if (nextTimestamp) {
+      const nextParts = nextTimestamp.split(':');
+      end = nextParts.length === 2
+        ? parseInt(nextParts[0]) * 60 + parseInt(nextParts[1])
+        : parseInt(nextParts[0]) * 3600 + parseInt(nextParts[1]) * 60 + parseInt(nextParts[2]);
+    }
+
+    return currentTime >= start && currentTime < end;
   };
 
   const handleDownloadPDF = async () => {
@@ -108,9 +137,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
     } finally { setIsChatLoading(false); }
   };
 
-  const [manualFactChecks, setManualFactChecks] = useState<any[]>(result.manualFactChecks || []);
   const [selection, setSelection] = useState<{ text: string, x: number, y: number } | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
 
   const handleSelection = (e: React.MouseEvent) => {
     const sel = window.getSelection();
@@ -127,37 +154,12 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
     }
   };
 
-  const handleVerifySelection = async () => {
-    if (!selection || isVerifying) return;
-    setIsVerifying(true);
-    try {
-      const factCheck = await geminiService.verifyManualSelection(selection.text);
-      const updatedManual = [...manualFactChecks, factCheck];
-      setManualFactChecks(updatedManual);
-
-      // Update entry in history if possible
-      const saved = localStorage.getItem('servimedia_history_v5');
-      if (saved) {
-        const history = JSON.parse(saved);
-        // More robust matching: try to match by ID or fileName and date
-        const itemIndex = history.findIndex((h: any) =>
-          (h.data.transcription && h.data.transcription[0]?.text === result.transcription[0]?.text) ||
-          (h.fileName === audioFile?.name && h.mode === 'AUDIO')
-        );
-        if (itemIndex !== -1) {
-          history[itemIndex].data.manualFactChecks = updatedManual;
-          localStorage.setItem('servimedia_history_v5', JSON.stringify(history));
-        }
-      }
-
-      setActiveTab('verificador');
-      setSelection(null);
-    } catch (e) {
-      console.error(e);
-      alert("Error al verificar el dato.");
-    } finally {
-      setIsVerifying(false);
+  const handleVerifySelection = () => {
+    if (!selection || result.isVerifyingManual) return;
+    if (onManualVerify) {
+      onManualVerify(selection.text);
     }
+    setSelection(null);
   };
 
   return (
@@ -169,7 +171,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
           className="fixed z-[60] bg-servimedia-pink text-white px-4 py-2 rounded-full font-black text-[10px] uppercase tracking-widest shadow-2xl animate-in zoom-in-95 flex items-center gap-2 hover:scale-105 transition-all"
           style={{ left: selection.x, top: selection.y, transform: 'translateX(-50%)' }}
         >
-          {isVerifying ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+          {result.isVerifyingManual ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
           Verificar Dato
         </button>
       )}
@@ -284,19 +286,23 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
           <div className="p-12 flex-grow">
             {activeTab === 'transcript' && (
               <div className="space-y-14" onMouseUp={handleSelection}>
-                {(result.transcription || []).map((s, i) => (
-                  <div key={i} className="flex gap-10 group animate-in slide-in-from-left-4 fade-in">
-                    <button
-                      onClick={() => handleTimestampClick(s.timestamp)}
-                      className="text-[10px] font-black text-servimedia-pink bg-servimedia-pink/5 px-4 py-2.5 rounded-xl h-fit hover:bg-servimedia-pink hover:text-white transition-all whitespace-nowrap shadow-sm"
-                    >
-                      {s.timestamp}
-                    </button>
-                    <p className="text-2xl font-serif text-servimedia-gray leading-relaxed flex-grow selection:bg-servimedia-pink/10">
-                      {s.text}
-                    </p>
-                  </div>
-                ))}
+                {(result.transcription || []).map((s, i) => {
+                  const isActive = isSegmentActive(s.timestamp, result.transcription[i + 1]?.timestamp);
+                  return (
+                    <div key={i} className={`flex gap-10 group animate-in slide-in-from-left-4 fade-in transition-all ${isActive ? 'translate-x-4' : ''}`}>
+                      <button
+                        onClick={() => handleTimestampClick(s.timestamp)}
+                        className={`flex items-center gap-3 text-[10px] font-black px-5 py-3 rounded-2xl h-fit transition-all whitespace-nowrap shadow-sm border-2 ${isActive ? 'bg-servimedia-pink text-white border-servimedia-pink' : 'text-servimedia-pink bg-servimedia-pink/5 border-transparent hover:border-servimedia-pink/20'}`}
+                      >
+                        {isActive && isPlaying ? <PauseCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
+                        {s.timestamp}
+                      </button>
+                      <p className={`text-2xl font-serif leading-relaxed flex-grow selection:bg-servimedia-pink/10 transition-colors ${isActive ? 'text-servimedia-pink font-bold' : 'text-servimedia-gray'}`}>
+                        {s.text}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -316,7 +322,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
                       </div>
                     </div>
                   ))}
-                  {isChatLoading && <Loader2 className="w-8 h-8 animate-spin text-servimedia-pink mx-auto mt-4" />}
+                  {result.isVerifyingManual && <Loader2 className="w-8 h-8 animate-spin text-servimedia-pink mx-auto mt-4" />}
                 </div>
                 <div className="flex gap-4 p-2 bg-servimedia-light rounded-[2.5rem]">
                   <input
@@ -371,10 +377,10 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
                 )}
 
                 {/* Manual Fact Checks */}
-                {manualFactChecks.length > 0 && (
+                {(result.manualFactChecks || []).length > 0 && (
                   <div className="space-y-6 pt-10 border-t border-servimedia-border">
                     <h4 className="text-[10px] font-black text-servimedia-orange uppercase tracking-[0.4em] mb-4">Verificaciones Solicitadas</h4>
-                    {manualFactChecks.map((c, i) => (
+                    {(result.manualFactChecks || []).map((c, i) => (
                       <div key={i} className="p-8 border-2 border-servimedia-orange/20 bg-servimedia-orange/5 rounded-3xl space-y-4 shadow-sm">
                         <div className="flex items-center gap-3">
                           <ShieldCheck className={`w-5 h-5 ${c.verdict === 'Verdadero' ? 'text-green-500' : 'text-servimedia-orange'}`} />
@@ -404,11 +410,17 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
                   </div>
                 )}
 
-                {(!result.factChecks || result.factChecks.length === 0) && manualFactChecks.length === 0 && (
+                {(!result.factChecks || result.factChecks.length === 0) && (!result.manualFactChecks || result.manualFactChecks.length === 0) && !result.isVerifyingManual && (
                   <p className="text-center py-20 text-servimedia-gray/20 font-serif italic text-xl">
                     No hay verificaciones automáticas. <br />
                     <span className="text-sm font-sans uppercase font-black tracking-widest opacity-50">Selecciona texto en la transcripción para verificar datos manualmente.</span>
                   </p>
+                )}
+                {result.isVerifyingManual && (
+                  <div className="text-center py-20 animate-pulse">
+                    <Loader2 className="w-12 h-12 animate-spin text-servimedia-orange mx-auto mb-6" />
+                    <p className="text-servimedia-orange font-black uppercase tracking-widest text-xs">Consultando fuentes oficiales en segundo plano...</p>
+                  </div>
                 )}
               </div>
             )}

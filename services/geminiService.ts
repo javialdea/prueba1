@@ -10,17 +10,32 @@ const getApiKey = (): string => {
   const storedKey = localStorage.getItem('GEMINI_API_KEY');
   if (storedKey) return storedKey;
 
-  // Fallback to env var if available (for local dev)
-  if (process.env.API_KEY && process.env.API_KEY !== 'PLACEHOLDER_API_KEY') {
-    return process.env.API_KEY;
+  // Fallback to Vite env var (set in Vercel/Netlify)
+  const envKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (envKey && envKey !== 'PLACEHOLDER_API_KEY') {
+    return envKey;
   }
 
-  throw new Error("API Key no encontrada. Por favor, configura tu API Key en los ajustes.");
+  return ''; // Return empty instead of throwing to avoid blank page
 };
 
 // Helper to get AI instance
 const getAI = () => {
   return new GoogleGenAI({ apiKey: getApiKey() });
+};
+
+// --- UTILS ---
+const normalizeMimeType = (mimeType: string): string => {
+  if (mimeType.includes('quicktime')) return 'video/quicktime';
+  if (mimeType.includes('mp4')) return 'video/mp4';
+  if (mimeType.includes('wav')) return 'audio/wav';
+  if (mimeType.includes('mpeg')) return 'audio/mpeg';
+  return mimeType;
+};
+
+const DEFAULT_MODELS = {
+  PRO: "gemini-3-pro-preview",
+  FLASH: "gemini-3-flash-preview"
 };
 
 async function retryOperation<T>(operation: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
@@ -39,15 +54,11 @@ async function retryOperation<T>(operation: () => Promise<T>, retries = 3, delay
 
 // --- AUDIO/VIDEO PROCESSING ---
 const processAudio = async (base64Audio: string, mimeType: string): Promise<AnalysisResult> => {
-  let normalizedMimeType = mimeType;
-  if (mimeType.includes('quicktime')) normalizedMimeType = 'video/quicktime';
-  if (mimeType.includes('mp4')) normalizedMimeType = 'video/mp4';
-  if (mimeType.includes('wav')) normalizedMimeType = 'audio/wav';
-  if (mimeType.includes('mpeg')) normalizedMimeType = 'audio/mpeg';
+  const normalizedMimeType = normalizeMimeType(mimeType);
 
   const operation = async () => {
     const response = await getAI().models.generateContent({
-      model: "gemini-3-pro-preview",
+      model: DEFAULT_MODELS.PRO,
       contents: {
         parts: [
           { inlineData: { mimeType: normalizedMimeType, data: base64Audio } },
@@ -125,14 +136,55 @@ const processAudio = async (base64Audio: string, mimeType: string): Promise<Anal
 // --- GENERIC CHAT (WRITING ASSISTANT) ---
 const genericChat = async (history: { role: string, text: string }[], message: string) => {
   const response = await getAI().models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: DEFAULT_MODELS.FLASH,
     contents: [
       ...history.map(h => ({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: h.text }] })),
       { role: 'user', parts: [{ text: message }] }
     ],
     config: {
       temperature: 0.7,
-      systemInstruction: "Eres un Asistente de Redacción experto para la Agencia Servimedia. Tu objetivo es ayudar a periodistas a pulir sus textos, corregir faltas de ortografía, mejorar la gramática y responder consultas de investigación. Mantén un tono profesional, culto y preciso."
+      systemInstruction: "Eres un Asistente de Redacción experto para la Agencia Servimedia. Tu objetivo es ayudar a periodistas a pulir sus textos, corregir faltas de ortografía, mejorar la gramática y responder consultas de investigación. Mantén un tono profesional, culto y preciso. REGLA DE FORMATO CRÍTICA: No uses asteriscos (* o **) bajo ningún concepto. Si necesitas resaltar algo, usa etiquetas <b> texto </b> para negrita o <u> texto </u> para subrayado directamente."
+    }
+  });
+  return response.text;
+};
+
+// --- CHAT WITH MULTIPLE DOCUMENTS (NOTEBOOK LM MODE) ---
+const chatWithDocuments = async (
+  history: { role: string, text: string }[],
+  message: string,
+  sources: { name: string, base64: string, mimeType: string }[]
+) => {
+  const contentParts: any[] = [];
+
+  // System context for documents
+  contentParts.push({ text: "CONTEXTO DOCUMENTAL ADJUNTO PARA LA CONSULTA:" });
+
+  for (const src of sources) {
+    if (src.mimeType.includes('word') || src.mimeType.includes('officedocument')) {
+      try {
+        const arrayBuffer = Uint8Array.from(atob(src.base64), c => c.charCodeAt(0)).buffer;
+        const res = await mammoth.extractRawText({ arrayBuffer });
+        contentParts.push({ text: `CONTENIDO DE "${src.name}":\n${res.value}` });
+      } catch (e) {
+        contentParts.push({ inlineData: { mimeType: src.mimeType, data: src.base64 } });
+      }
+    } else {
+      contentParts.push({ inlineData: { mimeType: src.mimeType, data: src.base64 } });
+    }
+  }
+
+  contentParts.push({ text: `MENSAJE DEL USUARIO: ${message}` });
+
+  const response = await getAI().models.generateContent({
+    model: DEFAULT_MODELS.FLASH,
+    contents: [
+      ...history.map(h => ({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: h.text }] })),
+      { role: 'user', parts: contentParts }
+    ],
+    config: {
+      temperature: 0.5,
+      systemInstruction: "Eres un asistente de investigación estilo Notebook LM para Servimedia. Tu misión es responder preguntas basándote en los documentos proporcionados. Si la respuesta no está en los documentos, indícalo, pero intenta ser lo más útil posible relacionando conceptos si es pertinente. Cita nombres de archivos si mencionas datos específicos. REGLA DE FORMATO CRÍTICA: No uses asteriscos (* o **) para enfatizar. Usa etiquetas <b> para negrita o <u> para subrayado directamente."
     }
   });
   return response.text;
@@ -141,7 +193,7 @@ const genericChat = async (history: { role: string, text: string }[], message: s
 // --- CHAT WITH SOURCE ---
 const chatWithSource = async (history: { role: string, text: string }[], transcript: string, userQuestion: string) => {
   const response = await getAI().models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: DEFAULT_MODELS.FLASH,
     contents: [
       { role: 'user', parts: [{ text: `CONTEXTO (Transcripción íntegra de la entrevista):\n${transcript}` }] },
       ...history.map(h => ({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: h.text }] })),
@@ -205,7 +257,7 @@ const processPressRelease = async (
     contentParts.push({ text: instructionText });
 
     const response = await getAI().models.generateContent({
-      model: "gemini-3-pro-preview",
+      model: DEFAULT_MODELS.PRO,
       contents: { parts: contentParts },
       config: {
         responseMimeType: "application/json",
@@ -238,7 +290,7 @@ const processPressRelease = async (
 const verifyManualSelection = async (text: string): Promise<any> => {
   const operation = async () => {
     const response = await getAI().models.generateContent({
-      model: "gemini-3-pro-preview", // Upgrading to Pro for better Grounding/Search support
+      model: DEFAULT_MODELS.PRO, // Upgrading to Pro for better Grounding/Search support
       contents: {
         parts: [
           {
@@ -294,5 +346,5 @@ const verifyManualSelection = async (text: string): Promise<any> => {
   return await retryOperation(operation);
 };
 
-export const geminiService = { processAudio, processPressRelease, chatWithSource, genericChat, verifyManualSelection };
+export const geminiService = { processAudio, processPressRelease, chatWithSource, genericChat, chatWithDocuments, verifyManualSelection };
 
