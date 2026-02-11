@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Mic2, Newspaper, PenTool, History as HistoryIcon, Settings, User, LogOut } from 'lucide-react';
+import { Mic2, Newspaper, PenTool, History as HistoryIcon, Settings, User, LogIn, LogOut } from 'lucide-react';
 import { AppMode } from '../types';
 
 interface RobotLogoProps {
