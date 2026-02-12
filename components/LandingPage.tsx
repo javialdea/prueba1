@@ -42,9 +42,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                         <h1 className="text-5xl md:text-7xl font-black text-servimedia-gray leading-[1.1] tracking-tight">
                             Una herramienta de IA creada <span className="text-servimedia-pink underline decoration-servimedia-orange/30 decoration-8 underline-offset-8">por y para</span> Servimedia
                         </h1>
-                        <p className="text-xl md:text-2xl text-servimedia-gray/40 max-w-2xl mx-auto font-medium leading-relaxed italic border-l-4 border-servimedia-border pl-8">
-                            Transcripción en tiempo real, análisis Notebook LM y optimización de contenidos bajo el Manual de Estilo de Servimedia.
-                        </p>
                     </div>
 
                     {/* Value Props */}
