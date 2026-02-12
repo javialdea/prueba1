@@ -352,6 +352,13 @@ Recovery Detected: ${accessToken && type === 'recovery' ? 'YES ✅' : 'NO ❌'}
   if (!session) {
     return (
       <>
+        {/* DEBUG OVERLAY - VISIBLE ON SCREEN */}
+        {debugInfo && (
+          <div className="fixed top-4 right-4 z-[9999] bg-black text-white p-4 rounded-lg shadow-2xl max-w-md text-xs font-mono whitespace-pre-wrap">
+            {debugInfo}
+          </div>
+        )}
+
         <LandingPage onLogin={() => setIsAuthOpen(true)} />
         {isAuthOpen && <AuthModal onClose={() => setIsAuthOpen(false)} />}
       </>
