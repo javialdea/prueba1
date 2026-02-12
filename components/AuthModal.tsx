@@ -150,7 +150,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
                         {isSignUp ? '¿Ya tienes cuenta? Entra aquí' : '¿No tienes cuenta? Regístrate'}
                     </button>
 
-                    {!isSignUp && (
+                    {false && (
                         <button
                             type="button"
                             onClick={() => setIsForgotPasswordOpen(true)}
