@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/supabase';
 import { LogIn, UserPlus, Loader2, X, Mail, Lock, KeyRound } from 'lucide-react';
+import { ForgotPasswordModal } from './ForgotPasswordModal';
 
 interface AuthModalProps {
     onClose: () => void;
@@ -14,6 +15,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
     const [registrationKey, setRegistrationKey] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isSignUp, setIsSignUp] = useState(false);
+    const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
 
@@ -147,7 +149,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
                     >
                         {isSignUp ? '¿Ya tienes cuenta? Entra aquí' : '¿No tienes cuenta? Regístrate'}
                     </button>
+
+                    {!isSignUp && (
+                        <button
+                            type="button"
+                            onClick={() => setIsForgotPasswordOpen(true)}
+                            className="w-full text-[10px] font-black uppercase tracking-[0.2em] text-servimedia-pink/60 hover:text-servimedia-pink transition-all"
+                        >
+                            ¿Has olvidado tu contraseña?
+                        </button>
+                    )}
                 </form>
+
+                <ForgotPasswordModal
+                    isOpen={isForgotPasswordOpen}
+                    onClose={() => setIsForgotPasswordOpen(false)}
+                />
             </div>
         </div>
     );

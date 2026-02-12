@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Mic2, Newspaper, PenTool, History as HistoryIcon, Settings, User, LogIn, LogOut } from 'lucide-react';
+import { Mic2, Newspaper, PenTool, History as HistoryIcon, Settings, User, LogIn, LogOut, DollarSign } from 'lucide-react';
 import { AppMode } from '../types';
 
 interface RobotLogoProps {
@@ -37,10 +37,12 @@ interface AppHeaderProps {
     onModeChange: (mode: AppMode) => void;
     onHistoryOpen: () => void;
     onSettingsOpen: () => void;
+    onCostEstimatorOpen: () => void;
     onAuthOpen: () => void;
     onLogout: () => void;
     onLogoClick: () => void;
     userEmail?: string;
+    isAdmin?: boolean;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -48,10 +50,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     onModeChange,
     onHistoryOpen,
     onSettingsOpen,
+    onCostEstimatorOpen,
     onAuthOpen,
     onLogout,
     onLogoClick,
-    userEmail
+    userEmail,
+    isAdmin = false
 }) => {
     return (
         <nav className="bg-white border-b border-servimedia-border sticky top-0 z-40 shadow-sm">
@@ -91,6 +95,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                             <Settings className="w-5 h-5" />
                             <span className="hidden lg:inline">Ajustes</span>
                         </button>
+                        {isAdmin && (
+                            <button onClick={onCostEstimatorOpen} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40 hover:text-green-600 transition-colors">
+                                <DollarSign className="w-5 h-5" />
+                                <span className="hidden lg:inline">Costes</span>
+                            </button>
+                        )}
                         {userEmail ? (
                             <div className="flex items-center gap-4">
                                 <div className="flex items-center gap-2 bg-servimedia-light px-4 py-2 rounded-full border border-servimedia-border">

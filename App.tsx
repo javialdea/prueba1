@@ -8,9 +8,11 @@ import { HistoryDrawer } from './components/HistoryDrawer';
 import { AppHeader } from './components/AppHeader';
 import { AppFooter } from './components/AppFooter';
 import { SettingsModal } from './components/SettingsModal';
+import { CostEstimator } from './components/CostEstimator';
 import { AudioQueue } from './components/AudioQueue';
 import { LandingPage } from './components/LandingPage';
 import { AuthModal } from './components/AuthModal';
+import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { supabase } from './services/supabase';
 import { Session } from '@supabase/supabase-js';
 import { AppStatus, FileState, AnalysisResult as AnalysisResultType, PressReleaseResult as PressReleaseResultType, AppMode, HistoryItem, TranscriptionJob } from './types';
@@ -32,8 +34,10 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isCostEstimatorOpen, setIsCostEstimatorOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -48,7 +52,19 @@ const App: React.FC = () => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Check for password reset token in URL
+  useEffect(() => {
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const accessToken = hashParams.get('access_token');
+    const type = hashParams.get('type');
+
+    if (accessToken && type === 'recovery') {
+      setIsResettingPassword(true);
+    }
+  }, []);
   const [apiKey, setApiKey] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -56,16 +72,24 @@ const App: React.FC = () => {
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('gemini_api_key')
+        .select('gemini_api_key, is_admin')
         .eq('id', session.user.id)
         .single();
 
-      if (!error && data?.gemini_api_key) {
-        setApiKey(data.gemini_api_key);
-        localStorage.setItem('GEMINI_API_KEY', data.gemini_api_key);
+      if (!error && data) {
+        if (data.gemini_api_key) {
+          setApiKey(data.gemini_api_key);
+          localStorage.setItem('GEMINI_API_KEY', data.gemini_api_key);
+        } else {
+          const storedKey = localStorage.getItem('GEMINI_API_KEY');
+          if (storedKey) setApiKey(storedKey);
+        }
+        // Set admin status
+        setIsAdmin(data.is_admin || false);
       } else {
         const storedKey = localStorage.getItem('GEMINI_API_KEY');
         if (storedKey) setApiKey(storedKey);
+        setIsAdmin(false);
       }
     };
 
@@ -289,6 +313,23 @@ const App: React.FC = () => {
     }
   };
 
+  // Show password reset page if reset token is detected
+  if (isResettingPassword) {
+    return (
+      <ResetPasswordPage
+        onSuccess={() => {
+          setIsResettingPassword(false);
+          window.location.hash = '';
+          setIsAuthOpen(true);
+        }}
+        onCancel={() => {
+          setIsResettingPassword(false);
+          window.location.hash = '';
+        }}
+      />
+    );
+  }
+
   if (!session) {
     return (
       <>
@@ -310,6 +351,7 @@ const App: React.FC = () => {
         onModeChange={setMode}
         onHistoryOpen={() => setIsHistoryOpen(true)}
         onSettingsOpen={() => setIsSettingsOpen(true)}
+        onCostEstimatorOpen={() => setIsCostEstimatorOpen(true)}
         onAuthOpen={() => setIsAuthOpen(true)}
         onLogout={async () => {
           await supabase.auth.signOut();
@@ -320,6 +362,7 @@ const App: React.FC = () => {
         }}
         onLogoClick={handleClear}
         userEmail={session?.user?.email}
+        isAdmin={isAdmin}
       />
 
       {isSettingsOpen && (
@@ -340,6 +383,8 @@ const App: React.FC = () => {
           onClose={() => setIsSettingsOpen(false)}
         />
       )}
+
+      <CostEstimator isOpen={isCostEstimatorOpen} onClose={() => setIsCostEstimatorOpen(false)} />
 
       <HistoryDrawer
         isOpen={isHistoryOpen}
