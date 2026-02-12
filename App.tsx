@@ -43,45 +43,28 @@ const App: React.FC = () => {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) setIsAuthOpen(false);
+      if (session && !isResettingPassword) setIsAuthOpen(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) setIsAuthOpen(false);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('🔔 Auth event:', event);
+
+      // PASSWORD_RECOVERY event fires when user clicks reset link
+      if (event === 'PASSWORD_RECOVERY') {
+        console.log('✅ PASSWORD_RECOVERY event detected! Showing reset page...');
+        setIsResettingPassword(true);
+        setDebugInfo(prev => prev + '\n\n🔔 PASSWORD_RECOVERY event fired!');
+        return; // Don't set session yet
+      }
+
+      if (!isResettingPassword) {
+        setSession(session);
+        if (session) setIsAuthOpen(false);
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
-
-  // Check for password reset token in URL
-  useEffect(() => {
-    const fullUrl = window.location.href;
-    const hash = window.location.hash;
-
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const accessToken = hashParams.get('access_token');
-    const type = hashParams.get('type');
-
-    const debug = `
-🔍 DEBUG INFO:
-URL: ${fullUrl}
-Hash: ${hash}
-Access Token: ${accessToken ? 'EXISTS' : 'NULL'}
-Type: ${type || 'NULL'}
-Recovery Detected: ${accessToken && type === 'recovery' ? 'YES ✅' : 'NO ❌'}
-    `.trim();
-
-    setDebugInfo(debug);
-    console.log(debug);
-
-    if (accessToken && type === 'recovery') {
-      console.log('✅ RECOVERY TOKEN DETECTED! Showing reset page...');
-      setIsResettingPassword(true);
-    } else {
-      console.log('❌ No recovery token found');
-    }
-  }, []);
+  }, [isResettingPassword]);
   const [apiKey, setApiKey] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
 
