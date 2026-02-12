@@ -74,7 +74,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                             </span>
                         </button>
                         <p className="mt-8 text-[10px] font-bold text-servimedia-gray/20 uppercase tracking-[0.3em]">
-                            Sistemas de Redacción v6.1 • Proyecto Cloud Native
+                            Un proyecto creado por Javier Aldea
                         </p>
                     </div>
                 </div>
