@@ -55,12 +55,22 @@ const App: React.FC = () => {
 
   // Check for password reset token in URL
   useEffect(() => {
+    console.log('🔍 Checking URL for reset token...');
+    console.log('📍 Full URL:', window.location.href);
+    console.log('📍 Hash:', window.location.hash);
+
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     const accessToken = hashParams.get('access_token');
     const type = hashParams.get('type');
 
+    console.log('🔑 Access token:', accessToken ? 'EXISTS' : 'NULL');
+    console.log('📋 Type:', type);
+
     if (accessToken && type === 'recovery') {
+      console.log('✅ RECOVERY TOKEN DETECTED! Showing reset page...');
       setIsResettingPassword(true);
+    } else {
+      console.log('❌ No recovery token found');
     }
   }, []);
   const [apiKey, setApiKey] = useState('');
