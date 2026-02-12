@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<string>('');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -55,16 +56,24 @@ const App: React.FC = () => {
 
   // Check for password reset token in URL
   useEffect(() => {
-    console.log('🔍 Checking URL for reset token...');
-    console.log('📍 Full URL:', window.location.href);
-    console.log('📍 Hash:', window.location.hash);
+    const fullUrl = window.location.href;
+    const hash = window.location.hash;
 
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
     const accessToken = hashParams.get('access_token');
     const type = hashParams.get('type');
 
-    console.log('🔑 Access token:', accessToken ? 'EXISTS' : 'NULL');
-    console.log('📋 Type:', type);
+    const debug = `
+🔍 DEBUG INFO:
+URL: ${fullUrl}
+Hash: ${hash}
+Access Token: ${accessToken ? 'EXISTS' : 'NULL'}
+Type: ${type || 'NULL'}
+Recovery Detected: ${accessToken && type === 'recovery' ? 'YES ✅' : 'NO ❌'}
+    `.trim();
+
+    setDebugInfo(debug);
+    console.log(debug);
 
     if (accessToken && type === 'recovery') {
       console.log('✅ RECOVERY TOKEN DETECTED! Showing reset page...');
@@ -351,6 +360,13 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-servimedia-light font-sans">
+      {/* DEBUG OVERLAY - VISIBLE ON SCREEN */}
+      {debugInfo && (
+        <div className="fixed top-4 right-4 z-[9999] bg-black text-white p-4 rounded-lg shadow-2xl max-w-md text-xs font-mono whitespace-pre-wrap">
+          {debugInfo}
+        </div>
+      )}
+
       <div className="h-2 w-full flex">
         <div className="h-full w-1/2 bg-servimedia-pink"></div>
         <div className="h-full w-1/2 bg-servimedia-orange"></div>
