@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { LogIn, UserPlus, Loader2, X, Mail, Lock, KeyRound } from 'lucide-react';
 import { ForgotPasswordModal } from './ForgotPasswordModal';
