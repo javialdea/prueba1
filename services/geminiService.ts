@@ -34,8 +34,8 @@ const normalizeMimeType = (mimeType: string): string => {
 };
 
 const DEFAULT_MODELS = {
-  PRO: "gemini-1.5-pro",
-  FLASH: "gemini-1.5-flash"
+  PRO: "gemini-2.5-pro",
+  FLASH: "gemini-2.5-flash"
 };
 
 async function retryOperation<T>(operation: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
