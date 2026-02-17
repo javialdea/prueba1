@@ -160,6 +160,7 @@ const App: React.FC = () => {
               user_id: session.user.id,
               file_name: pendingJob.file.name,
               mime_type: pendingJob.mimeType,
+              job_type: 'audio',
               status: AppStatus.COMPLETED,
               result: data
             });
@@ -210,10 +211,11 @@ const App: React.FC = () => {
         // Save to Supabase if logged in
         if (session?.user?.id) {
           try {
-            await supabase.from('audio_jobs').insert({ // Reusing same table for now or a different one? 
+            await supabase.from('audio_jobs').insert({
               user_id: session.user.id,
               file_name: pendingJob.file.name,
               mime_type: pendingJob.mimeType,
+              job_type: 'press_release',
               status: AppStatus.COMPLETED,
               result: data
             });

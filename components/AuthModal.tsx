@@ -7,7 +7,7 @@ interface AuthModalProps {
     onClose: () => void;
 }
 
-const REGISTRATION_KEY = import.meta.env.VITE_REGISTRATION_KEY || 'servimedia2026';
+
 
 export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
     const [email, setEmail] = useState('');
@@ -40,9 +40,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
 
         try {
             if (isSignUp) {
-                // Verificar clave de registro dinámica (si falla, usa la de env por si acaso)
-                const currentKey = dynamicRegKey || REGISTRATION_KEY;
-                if (registrationKey !== currentKey) {
+                const currentKey = dynamicRegKey;
+                if (!currentKey || registrationKey !== currentKey) {
                     throw new Error("Clave de registro incorrecta. Contacta con tu administrador.");
                 }
                 const { error } = await supabase.auth.signUp({ email, password });

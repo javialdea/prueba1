@@ -66,13 +66,26 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
 
             if (gData) setGeminiKey(gData.value);
 
-            // Fetch Stats (Mock for now, would count from audio_jobs table)
-            const { count: audioCount } = await supabase.from('audio_jobs').select('*', { count: 'exact', head: true });
+            // Fetch Stats
+            const { count: audioCount } = await supabase
+                .from('audio_jobs')
+                .select('*', { count: 'exact', head: true })
+                .eq('job_type', 'audio');
+
+            const { count: pressCount } = await supabase
+                .from('audio_jobs')
+                .select('*', { count: 'exact', head: true })
+                .eq('job_type', 'press_release');
+
+            // Count total jobs (including those without job_type for backwards compatibility)
+            const { count: totalJobCount } = await supabase
+                .from('audio_jobs')
+                .select('*', { count: 'exact', head: true });
 
             setStats({
                 totalUsers: pData?.length || 0,
-                totalAudios: audioCount || 0,
-                totalPressReleases: 0 // Would need press_jobs table check
+                totalAudios: audioCount ?? (totalJobCount ?? 0),
+                totalPressReleases: pressCount ?? 0
             });
 
         } catch (err: any) {
