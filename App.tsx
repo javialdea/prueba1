@@ -235,12 +235,7 @@ const App: React.FC = () => {
     processPendingPressJobs();
   }, [pressJobs, session, isProcessingPress]);
 
-  const handleSaveApiKey = () => {
-    localStorage.setItem('GEMINI_API_KEY', apiKey);
-    setIsSettingsOpen(false);
-    alert('API Key guardada correctamente.');
-    window.location.reload();
-  };
+
 
   useEffect(() => {
     const fetchHistory = async () => {
