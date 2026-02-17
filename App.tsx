@@ -469,24 +469,7 @@ const App: React.FC = () => {
         isAdmin={isAdmin}
       />
 
-      {isSettingsOpen && (
-        <SettingsModal
-          apiKey={apiKey}
-          setApiKey={setApiKey}
-          onSave={async () => {
-            localStorage.setItem('GEMINI_API_KEY', apiKey);
-            if (session?.user) {
-              await supabase.from('profiles').upsert({
-                id: session.user.id,
-                gemini_api_key: apiKey,
-                updated_at: new Date().toISOString()
-              });
-            }
-            setIsSettingsOpen(false);
-          }}
-          onClose={() => setIsSettingsOpen(false)}
-        />
-      )}
+
 
       <AdminPortal isOpen={isAdminPortalOpen} onClose={() => setIsAdminPortalOpen(false)} />
 
