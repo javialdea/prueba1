@@ -66,23 +66,23 @@ export interface HistoryItem {
   data: AnalysisResult | PressReleaseResult;
 }
 
-export interface TranscriptionJob {
+export interface BaseJob {
   id: string;
   file: File;
   base64: string;
   mimeType: string;
   status: AppStatus;
-  result?: AnalysisResult;
   timestamp: string;
+  job_type: 'audio' | 'press_release';
 }
 
-export interface PressReleaseJob {
-  id: string;
-  file: File;
-  base64: string;
-  mimeType: string;
-  status: AppStatus;
+export interface TranscriptionJob extends BaseJob {
+  job_type: 'audio';
+  result?: AnalysisResult;
+}
+
+export interface PressReleaseJob extends BaseJob {
+  job_type: 'press_release';
   result?: PressReleaseResult;
   userAngle?: string;
-  timestamp: string;
 }

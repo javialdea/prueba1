@@ -34,8 +34,8 @@ const normalizeMimeType = (mimeType: string): string => {
 };
 
 const DEFAULT_MODELS = {
-  PRO: "gemini-2.5-pro",
-  FLASH: "gemini-2.5-flash"
+  PRO: "gemini-1.5-pro",
+  FLASH: "gemini-1.5-flash"
 };
 
 async function retryOperation<T>(operation: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
@@ -293,59 +293,73 @@ const processPressRelease = async (
 // --- MANUAL VERIFICATION ---
 const verifyManualSelection = async (text: string): Promise<any> => {
   const operation = async () => {
-    const response = await getAI().models.generateContent({
-      model: DEFAULT_MODELS.PRO, // Upgrading to Pro for better Grounding/Search support
-      contents: {
-        parts: [
-          {
-            text: `ERES UN VERIFICADOR DE DATOS (FACT-CHECKER) EXPERTO PARA SERVIMEDIA.
-          
-          TU TAREA: Analizar el siguiente fragmento de texto y verificar si las afirmaciones, cifras o datos citados son veraces, falsos o dudosos. 
-          
-          IMPORTANTE: Tienes acceso a GOOGLE SEARCH. Úsalo para buscar fuentes fiables, noticias recientes y datos oficiales que respalden o desmientan la afirmación.
-          
-          TEXTO A VERIFICAR: "${text}"
-          
-          INSTRUCCIONES:
-          1. Identifica la afirmación principal.
-          2. Usa búsqueda en tiempo real para contrastar el dato.
-          3. Determina un veredicto: 'Verdadero', 'Falso', 'Engañoso', 'Inconsistente', 'Dudoso'.
-          4. Proporciona una explicación breve y profesional.
-          5. EXTRAE LOS ENLACES (URLs) de las fuentes que has consultado.
-          
-          DEBES DEVOLVER UN JSON VÁLIDO CON LA ESTRUCTURA SCHEMA DEFINIDA.` },
-        ],
-      },
-      config: {
-        temperature: 0.1,
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            claim: { type: Type.STRING },
-            verdict: { type: Type.STRING, enum: ['Verdadero', 'Falso', 'Engañoso', 'Inconsistente', 'Dudoso'] },
-            explanation: { type: Type.STRING },
-            sources: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  title: { type: Type.STRING },
-                  url: { type: Type.STRING }
-                },
-                required: ["title", "url"]
+    console.log(`[Gemini] Requesting manual verification for: "${text.substring(0, 50)}..."`);
+    try {
+      const response = await getAI().models.generateContent({
+        model: DEFAULT_MODELS.PRO,
+        contents: {
+          parts: [
+            {
+              text: `ERES UN VERIFICADOR DE DATOS (FACT-CHECKER) EXPERTO PARA SERVIMEDIA.
+            
+            TU TAREA: Analizar el siguiente fragmento de texto y verificar si las afirmaciones, cifras o datos citados son veraces, falsos o dudosos. 
+            
+            IMPORTANTE: Tienes acceso a GOOGLE SEARCH. Úsalo para buscar fuentes fiables, noticias recientes y datos oficiales que respalden o desmientan la afirmación.
+            
+            TEXTO A VERIFICAR: "${text}"
+            
+            INSTRUCCIONES:
+            1. Identifica la afirmación principal.
+            2. Usa búsqueda en tiempo real para contrastar el dato.
+            3. Determina un veredicto: 'Verdadero', 'Falso', 'Engañoso', 'Inconsistente', 'Dudoso'.
+            4. Proporciona una explicación breve y profesional.
+            5. EXTRAE LOS ENLACES (URLs) de las fuentes que has consultado.
+            
+            DEBES DEVOLVER UN JSON VÁLIDO CON LA ESTRUCTURA SCHEMA DEFINIDA.` },
+          ],
+        },
+        config: {
+          temperature: 0.1,
+          tools: [{ googleSearch: {} }],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              claim: { type: Type.STRING },
+              verdict: { type: Type.STRING, enum: ['Verdadero', 'Falso', 'Engañoso', 'Inconsistente', 'Dudoso'] },
+              explanation: { type: Type.STRING },
+              sources: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    url: { type: Type.STRING }
+                  },
+                  required: ["title", "url"]
+                }
               }
-            }
-          },
-          required: ["claim", "verdict", "explanation"]
+            },
+            required: ["claim", "verdict", "explanation"]
+          }
         }
-      }
-    });
+      });
 
-    const resultText = response.text;
-    if (!resultText) throw new Error("La IA no devolvió contenido.");
-    return JSON.parse(resultText);
+      let resultText = response.text;
+      if (!resultText) throw new Error("La IA no devolvió contenido.");
+
+      console.log("[Gemini] Raw verification response:", resultText);
+
+      // Clean markdown if present
+      if (resultText.includes('```')) {
+        resultText = resultText.replace(/```json\n?|```/g, '').trim();
+      }
+
+      return JSON.parse(resultText);
+    } catch (err) {
+      console.error("[Gemini] Verification failed:", err);
+      throw err;
+    }
   };
   return await retryOperation(operation);
 };
