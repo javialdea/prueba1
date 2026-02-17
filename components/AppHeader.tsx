@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Mic2, Newspaper, PenTool, History as HistoryIcon, Settings, User, LogIn, LogOut, DollarSign, Shield } from 'lucide-react';
+import { Mic2, Newspaper, PenTool, History as HistoryIcon, User, LogIn, LogOut, Shield } from 'lucide-react';
 import { AppMode } from '../types';
 
 interface RobotLogoProps {
@@ -36,7 +36,6 @@ interface AppHeaderProps {
     mode: AppMode;
     onModeChange: (mode: AppMode) => void;
     onHistoryOpen: () => void;
-    onSettingsOpen: () => void;
     onCostEstimatorOpen: () => void;
     onAuthOpen: () => void;
     onLogout: () => void;
@@ -49,7 +48,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     mode,
     onModeChange,
     onHistoryOpen,
-    onSettingsOpen,
     onCostEstimatorOpen,
     onAuthOpen,
     onLogout,
@@ -91,10 +89,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                             <HistoryIcon className="w-5 h-5" />
                             <span className="hidden lg:inline">Archivo</span>
                         </button>
-                        <button onClick={onSettingsOpen} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40 hover:text-servimedia-pink transition-colors">
-                            <Settings className="w-5 h-5" />
-                            <span className="hidden lg:inline">Ajustes</span>
-                        </button>
+
                         {isAdmin && (
                             <button onClick={onCostEstimatorOpen} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40 hover:text-servimedia-pink transition-colors">
                                 <Shield className="w-5 h-5" />

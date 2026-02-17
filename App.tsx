@@ -8,7 +8,6 @@ import { WritingAssistant } from './components/WritingAssistant';
 import { HistoryDrawer } from './components/HistoryDrawer';
 import { AppHeader } from './components/AppHeader';
 import { AppFooter } from './components/AppFooter';
-import { SettingsModal } from './components/SettingsModal';
 import { CostEstimator } from './components/CostEstimator';
 import { AudioQueue } from './components/AudioQueue';
 import { LandingPage } from './components/LandingPage';
@@ -37,7 +36,6 @@ const App: React.FC = () => {
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
@@ -456,7 +454,6 @@ const App: React.FC = () => {
         mode={mode}
         onModeChange={setMode}
         onHistoryOpen={() => setIsHistoryOpen(true)}
-        onSettingsOpen={() => setIsSettingsOpen(true)}
         onCostEstimatorOpen={() => setIsAdminPortalOpen(true)}
         onAuthOpen={() => setIsAuthOpen(true)}
         onLogout={async () => {
