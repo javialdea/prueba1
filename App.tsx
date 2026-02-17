@@ -13,7 +13,7 @@ import { CostEstimator } from './components/CostEstimator';
 import { AudioQueue } from './components/AudioQueue';
 import { LandingPage } from './components/LandingPage';
 import { AuthModal } from './components/AuthModal';
-import { ResetPasswordPage } from './components/ResetPasswordPage';
+
 import { supabase } from './services/supabase';
 import { Session } from '@supabase/supabase-js';
 import { AppStatus, FileState, AnalysisResult as AnalysisResultType, PressReleaseResult as PressReleaseResultType, AppMode, HistoryItem, TranscriptionJob, PressReleaseJob } from './types';
@@ -39,34 +39,22 @@ const App: React.FC = () => {
   const [isCostEstimatorOpen, setIsCostEstimatorOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
-  const [isResettingPassword, setIsResettingPassword] = useState(false);
-  const [debugInfo, setDebugInfo] = useState<string>('');
+
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session && !isResettingPassword) setIsAuthOpen(false);
+      if (session) setIsAuthOpen(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('🔔 Auth event:', event);
-
-      // PASSWORD_RECOVERY event fires when user clicks reset link
-      if (event === 'PASSWORD_RECOVERY') {
-        console.log('✅ PASSWORD_RECOVERY event detected! Showing reset page...');
-        setIsResettingPassword(true);
-        setDebugInfo(prev => prev + '\n\n🔔 PASSWORD_RECOVERY event fired!');
-        return; // Don't set session yet
-      }
-
-      if (!isResettingPassword) {
-        setSession(session);
-        if (session) setIsAuthOpen(false);
-      }
+      setSession(session);
+      if (session) setIsAuthOpen(false);
     });
 
     return () => subscription.unsubscribe();
-  }, [isResettingPassword]);
+  }, []);
   const [apiKey, setApiKey] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -385,32 +373,11 @@ const App: React.FC = () => {
     }
   };
 
-  // Show password reset page if reset token is detected
-  if (isResettingPassword) {
-    return (
-      <ResetPasswordPage
-        onSuccess={() => {
-          setIsResettingPassword(false);
-          window.location.hash = '';
-          setIsAuthOpen(true);
-        }}
-        onCancel={() => {
-          setIsResettingPassword(false);
-          window.location.hash = '';
-        }}
-      />
-    );
-  }
+
 
   if (!session) {
     return (
       <>
-        {/* DEBUG OVERLAY - VISIBLE ON SCREEN */}
-        {debugInfo && (
-          <div className="fixed top-4 right-4 z-[9999] bg-black text-white p-4 rounded-lg shadow-2xl max-w-md text-xs font-mono whitespace-pre-wrap">
-            {debugInfo}
-          </div>
-        )}
 
         <LandingPage onLogin={() => setIsAuthOpen(true)} />
         {isAuthOpen && <AuthModal onClose={() => setIsAuthOpen(false)} />}
@@ -420,12 +387,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-servimedia-light font-sans">
-      {/* DEBUG OVERLAY - VISIBLE ON SCREEN */}
-      {debugInfo && (
-        <div className="fixed top-4 right-4 z-[9999] bg-black text-white p-4 rounded-lg shadow-2xl max-w-md text-xs font-mono whitespace-pre-wrap">
-          {debugInfo}
-        </div>
-      )}
+
 
       <div className="h-2 w-full flex">
         <div className="h-full w-1/2 bg-servimedia-pink"></div>
