@@ -87,7 +87,7 @@ const App: React.FC = () => {
         .from('profiles')
         .select('gemini_api_key, is_admin, is_active')
         .eq('id', session.user.id)
-        .single();
+        .maybeSingle();
 
       if (!error && data) {
         if (data.gemini_api_key) {
