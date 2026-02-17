@@ -34,8 +34,8 @@ const normalizeMimeType = (mimeType: string): string => {
 };
 
 const DEFAULT_MODELS = {
-  PRO: "gemini-3-pro-preview",
-  FLASH: "gemini-3-flash-preview"
+  PRO: "gemini-1.5-pro",
+  FLASH: "gemini-1.5-flash"
 };
 
 async function retryOperation<T>(operation: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
@@ -224,7 +224,11 @@ const processPressRelease = async (
     
     ${userAngle ? `ÁNGULO EDITORIAL REQUERIDO: ${userAngle}` : ''}
     
-    DEBES DEVOLVER UN JSON VÁLIDO CON: headline, lead, body.
+    DEBES DEVOLVER UN JSON VÁLIDO CON LOS SIGUIENTES CAMPOS:
+    1. headline: El titular sugerido.
+    2. lead: El primer párrafo o entradilla.
+    3. body: El cuerpo del teletipo.
+    4. originalText: Una transcripción limpia y completa del texto original que se te ha proporcionado (especialmente importante para PDFs o imágenes).
   `;
 
   return await retryOperation(async () => {
@@ -267,9 +271,9 @@ const processPressRelease = async (
             headline: { type: Type.STRING },
             lead: { type: Type.STRING },
             body: { type: Type.STRING },
-            // originalText se gestiona en el cliente, no se solicita al modelo
+            originalText: { type: Type.STRING },
           },
-          required: ["headline", "lead", "body"], // originalText eliminado de los requeridos
+          required: ["headline", "lead", "body", "originalText"],
         },
         temperature: 0.1,
       },
@@ -279,7 +283,7 @@ const processPressRelease = async (
       headline: parsedResult.headline || "",
       lead: parsedResult.lead || "",
       body: parsedResult.body || "",
-      originalText: sourceTextForDisplay,
+      originalText: parsedResult.originalText || sourceTextForDisplay,
       userAngle: userAngle,
     };
     return result;

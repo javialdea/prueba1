@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useRef } from 'react';
 import { Upload, FileAudio, FileText, AlertCircle, X, Film, Loader2 } from 'lucide-react';
 import { FileState, AppMode } from '../types';
 import { extractAudioFromVideo } from '../utils/audioUtils';
@@ -8,29 +8,56 @@ interface FileUploaderProps {
   onClear: () => void;
   isLoading: boolean;
   mode: AppMode;
+  onError?: (error: string) => void;
 }
 
-export const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected, onClear, isLoading, mode }) => {
+export const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected, onClear, isLoading, mode, onError }) => {
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const processFiles = useCallback(async (files: FileList | File[]) => {
     const fileArray = Array.from(files);
+    console.log(`[FileUploader] Processing ${fileArray.length} file(s) in mode: ${mode}`);
 
-    // For single-file modes (PRESS_RELEASE), we only take the first and show preview
-    if (mode !== AppMode.AUDIO) {
+    // Clear any previous errors
+    setError(null);
+
+    // For modes that are NOT queue-based, we'd take only the first.
+    // But now both AUDIO and PRESS_RELEASE support queues.
+    // Keeping this block only for modes that might be added later and are single-file.
+    if (mode !== AppMode.AUDIO && mode !== AppMode.PRESS_RELEASE) {
       const file = fileArray[0];
       if (!file) return;
+      console.log(`[FileUploader] Single-file mode: ${file.name}`);
       setFileName(file.name);
-      const reader = new FileReader();
-      reader.onload = () => onFileSelected({ file: file, base64: (reader.result as string).split(',')[1], mimeType: file.type });
-      reader.readAsDataURL(file);
+      try {
+        const reader = new FileReader();
+        reader.onload = () => onFileSelected({ file: file, base64: (reader.result as string).split(',')[1], mimeType: file.type });
+        reader.onerror = () => {
+          const errorMsg = 'Error al leer el archivo';
+          setError(errorMsg);
+          if (onError) onError(errorMsg);
+        };
+        reader.readAsDataURL(file);
+      } catch (err) {
+        const errorMsg = `Error procesando archivo: ${err instanceof Error ? err.message : 'Error desconocido'}`;
+        console.error('[FileUploader]', errorMsg);
+        setError(errorMsg);
+        if (onError) onError(errorMsg);
+      }
+      // Reset input after processing
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       return;
     }
 
-    // For multi-file modes (AUDIO), we process all and pass them to parent
+    // For multi-file modes (AUDIO, PRESS_RELEASE), we process all and pass them to parent
     for (const file of fileArray) {
+      console.log(`[FileUploader] Processing: ${file.name} (${file.type})`);
       const isVideo = file.type.startsWith('video/') || file.name.endsWith('.mp4') || file.name.endsWith('.mov');
       if (isVideo) {
         setIsExtracting(true);
@@ -38,20 +65,51 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected, onCl
           const { base64 } = await extractAudioFromVideo(file);
           onFileSelected({ file: file, base64: base64, mimeType: 'audio/wav' });
         } catch (err) {
-          const reader = new FileReader();
-          reader.onload = () => onFileSelected({ file: file, base64: (reader.result as string).split(',')[1], mimeType: file.type });
-          reader.readAsDataURL(file);
+          console.error('[FileUploader] Video extraction failed, trying direct upload:', err);
+          const errorMsg = err instanceof Error ? err.message : 'Error al extraer audio del video';
+          setError(errorMsg);
+          if (onError) onError(errorMsg);
+          // Fallback: try to upload as-is
+          try {
+            const reader = new FileReader();
+            reader.onload = () => onFileSelected({ file: file, base64: (reader.result as string).split(',')[1], mimeType: file.type });
+            reader.readAsDataURL(file);
+          } catch (fallbackErr) {
+            console.error('[FileUploader] Fallback also failed:', fallbackErr);
+          }
         } finally { setIsExtracting(false); }
       } else {
-        const reader = new FileReader();
-        reader.onload = () => onFileSelected({ file: file, base64: (reader.result as string).split(',')[1], mimeType: file.type });
-        reader.readAsDataURL(file);
+        try {
+          const reader = new FileReader();
+          reader.onload = () => onFileSelected({ file: file, base64: (reader.result as string).split(',')[1], mimeType: file.type });
+          reader.onerror = () => {
+            const errorMsg = `Error al leer ${file.name}`;
+            setError(errorMsg);
+            if (onError) onError(errorMsg);
+          };
+          reader.readAsDataURL(file);
+        } catch (err) {
+          const errorMsg = `Error procesando ${file.name}: ${err instanceof Error ? err.message : 'Error desconocido'}`;
+          console.error('[FileUploader]', errorMsg);
+          setError(errorMsg);
+          if (onError) onError(errorMsg);
+        }
       }
     }
-  }, [onFileSelected, mode]);
+
+    // Reset input after processing all files
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [onFileSelected, mode, onError]);
 
   const handleInternalClear = () => {
+    console.log('[FileUploader] Clearing file state');
     setFileName(null);
+    setError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     onClear();
   };
 
@@ -94,7 +152,16 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected, onCl
           <h3 className="text-3xl font-black text-servimedia-gray tracking-tighter uppercase mb-2 group-hover/uploader:text-servimedia-pink transition-colors duration-500">Arrastra tu material</h3>
           <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-servimedia-gray/40">Audio, Video, PDF o Word • Máx 100MB</p>
         </div>
-        <input type="file" multiple={mode === AppMode.AUDIO} className="hidden" onChange={(e) => e.target.files && processFiles(e.target.files)} disabled={isLoading} />
+        <input
+          key={`file-input-${mode}`}
+          name={`file-input-${mode}`}
+          ref={fileInputRef}
+          type="file"
+          multiple={mode === AppMode.AUDIO || mode === AppMode.PRESS_RELEASE}
+          className="hidden"
+          onChange={(e) => e.target.files && processFiles(e.target.files)}
+          disabled={isLoading}
+        />
       </label>
     </div>
   );

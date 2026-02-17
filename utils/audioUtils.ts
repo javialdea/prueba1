@@ -1,22 +1,82 @@
+// Global AudioContext instance to prevent memory leaks
+// Browsers limit the number of AudioContext instances (typically 6)
+let globalAudioContext: AudioContext | null = null;
+
+/**
+ * Gets or creates a global AudioContext instance
+ * This prevents the "Too many AudioContext instances" error
+ */
+function getAudioContext(): AudioContext {
+  if (!globalAudioContext || globalAudioContext.state === 'closed') {
+    globalAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+
+  // Resume context if suspended (happens when tab is inactive)
+  if (globalAudioContext.state === 'suspended') {
+    globalAudioContext.resume().catch(err => {
+      console.warn('Failed to resume AudioContext:', err);
+    });
+  }
+
+  return globalAudioContext;
+}
+
+/**
+ * Cleanup function to close the global AudioContext
+ * Call this when the app is unmounting or no longer needs audio processing
+ */
+export function cleanupAudioContext() {
+  if (globalAudioContext && globalAudioContext.state !== 'closed') {
+    globalAudioContext.close().catch(err => {
+      console.warn('Failed to close AudioContext:', err);
+    });
+    globalAudioContext = null;
+  }
+}
 
 export async function extractAudioFromVideo(file: File): Promise<{ blob: Blob, base64: string }> {
-  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-  const arrayBuffer = await file.arrayBuffer();
-  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+  try {
+    console.log(`[AudioUtils] Processing file: ${file.name} (${file.type}, ${(file.size / 1024 / 1024).toFixed(2)}MB)`);
 
-  // Configuramos para 1 canal (mono) y 16000Hz para optimizar tamaño y calidad de voz
-  const offlineContext = new OfflineAudioContext(1, audioBuffer.duration * 16000, 16000);
-  const source = offlineContext.createBufferSource();
-  source.buffer = audioBuffer;
-  source.connect(offlineContext.destination);
-  source.start();
+    const audioContext = getAudioContext();
 
-  const renderedBuffer = await offlineContext.startRendering();
-  const wavBlob = bufferToWav(renderedBuffer);
-  
-  const base64 = await blobToBase64(wavBlob);
-  
-  return { blob: wavBlob, base64 };
+    const arrayBuffer = await file.arrayBuffer();
+    console.log('[AudioUtils] File loaded into ArrayBuffer');
+
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    console.log(`[AudioUtils] Audio decoded: ${audioBuffer.duration.toFixed(2)}s, ${audioBuffer.numberOfChannels} channels`);
+
+    // Configuramos para 1 canal (mono) y 16000Hz para optimizar tamaño y calidad de voz
+    const offlineContext = new OfflineAudioContext(1, audioBuffer.duration * 16000, 16000);
+    const source = offlineContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(offlineContext.destination);
+    source.start();
+
+    const renderedBuffer = await offlineContext.startRendering();
+    console.log('[AudioUtils] Audio resampled to 16kHz mono');
+
+    const wavBlob = bufferToWav(renderedBuffer);
+    console.log(`[AudioUtils] WAV blob created: ${(wavBlob.size / 1024 / 1024).toFixed(2)}MB`);
+
+    const base64 = await blobToBase64(wavBlob);
+    console.log('[AudioUtils] Base64 encoding complete');
+
+    return { blob: wavBlob, base64 };
+  } catch (error) {
+    console.error('[AudioUtils] Error processing audio:', error);
+
+    // Provide more specific error messages
+    if (error instanceof Error) {
+      if (error.name === 'EncodingError') {
+        throw new Error(`No se pudo decodificar el archivo de audio. Asegúrate de que sea un formato válido (MP3, WAV, etc.)`);
+      } else if (error.message.includes('quota')) {
+        throw new Error(`El archivo es demasiado grande para procesar. Intenta con un archivo más pequeño.`);
+      }
+    }
+
+    throw new Error(`Error al procesar el audio: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+  }
 }
 
 function bufferToWav(buffer: AudioBuffer): Blob {

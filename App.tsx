@@ -3,6 +3,7 @@ import { ChevronRight, Loader2, Target, Clock } from 'lucide-react';
 import { FileUploader } from './components/FileUploader';
 import { AnalysisResult } from './components/AnalysisResult';
 import { PressReleaseResult } from './components/PressReleaseResult';
+import { PressReleaseQueue } from './components/PressReleaseQueue';
 import { WritingAssistant } from './components/WritingAssistant';
 import { HistoryDrawer } from './components/HistoryDrawer';
 import { AppHeader } from './components/AppHeader';
@@ -15,7 +16,7 @@ import { AuthModal } from './components/AuthModal';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { supabase } from './services/supabase';
 import { Session } from '@supabase/supabase-js';
-import { AppStatus, FileState, AnalysisResult as AnalysisResultType, PressReleaseResult as PressReleaseResultType, AppMode, HistoryItem, TranscriptionJob } from './types';
+import { AppStatus, FileState, AnalysisResult as AnalysisResultType, PressReleaseResult as PressReleaseResultType, AppMode, HistoryItem, TranscriptionJob, PressReleaseJob } from './types';
 import { geminiService } from './services/geminiService';
 
 const App: React.FC = () => {
@@ -24,11 +25,12 @@ const App: React.FC = () => {
   // Audio Jobs Queue (Multi-audio support)
   const [audioJobs, setAudioJobs] = useState<TranscriptionJob[]>([]);
   const [activeAudioJobId, setActiveAudioJobId] = useState<string | null>(null);
+  const [isProcessingAudio, setIsProcessingAudio] = useState(false);
 
-  // Press Release Mode States (Single-file for now)
-  const [pressStatus, setPressStatus] = useState<AppStatus>(AppStatus.IDLE);
-  const [pressFileState, setPressFileState] = useState<FileState>({ file: null, base64: null, mimeType: null });
-  const [pressResult, setPressResult] = useState<PressReleaseResultType | null>(null);
+  // Press Release Mode States (Queue support)
+  const [pressJobs, setPressJobs] = useState<PressReleaseJob[]>([]);
+  const [activePressJobId, setActivePressJobId] = useState<string | null>(null);
+  const [isProcessingPress, setIsProcessingPress] = useState(false);
   const [userAngle, setUserAngle] = useState('');
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -101,35 +103,106 @@ const App: React.FC = () => {
   // Effect to process pending audio jobs
   useEffect(() => {
     const processPendingJobs = async () => {
+      // Prevent concurrent processing
+      if (isProcessingAudio) {
+        console.log('[App] Already processing a job, skipping...');
+        return;
+      }
+
       const pendingJob = audioJobs.find(j => j.status === AppStatus.IDLE);
       if (!pendingJob) return;
+
+      console.log(`[App] Starting to process job: ${pendingJob.file.name}`);
+      setIsProcessingAudio(true);
 
       // Mark as processing
       setAudioJobs(prev => prev.map(j => j.id === pendingJob.id ? { ...j, status: AppStatus.PROCESSING } : j));
 
       try {
         const data = await geminiService.processAudio(pendingJob.base64, pendingJob.mimeType);
+        console.log(`[App] Successfully processed: ${pendingJob.file.name}`);
 
-        // Save to Supabase if logged in
-        if (session?.user) {
-          await supabase.from('audio_jobs').insert({
-            user_id: session.user.id,
-            file_name: pendingJob.file.name,
-            mime_type: pendingJob.mimeType,
-            status: AppStatus.COMPLETED,
-            result: data
-          });
+        // Save to Supabase if logged in and session is valid
+        if (session?.user?.id) {
+          try {
+            const { error: supabaseError } = await supabase.from('audio_jobs').insert({
+              user_id: session.user.id,
+              file_name: pendingJob.file.name,
+              mime_type: pendingJob.mimeType,
+              status: AppStatus.COMPLETED,
+              result: data
+            });
+
+            if (supabaseError) {
+              console.error('[App] Failed to save to Supabase:', supabaseError);
+              // Don't fail the whole operation if cloud save fails
+            } else {
+              console.log('[App] Saved to Supabase successfully');
+            }
+          } catch (supabaseErr) {
+            console.error('[App] Supabase operation failed:', supabaseErr);
+            // Continue even if Supabase fails
+          }
         }
 
         setAudioJobs(prev => prev.map(j => j.id === pendingJob.id ? { ...j, status: AppStatus.COMPLETED, result: data } : j));
         saveToHistory(data, AppMode.AUDIO, pendingJob.file.name);
       } catch (error) {
+        console.error('[App] Error processing audio job:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Error desconocido al procesar audio';
+        console.error('[App] Error details:', errorMessage);
         setAudioJobs(prev => prev.map(j => j.id === pendingJob.id ? { ...j, status: AppStatus.ERROR } : j));
+      } finally {
+        setIsProcessingAudio(false);
       }
     };
 
     processPendingJobs();
-  }, [audioJobs]);
+  }, [audioJobs, session, isProcessingAudio]);
+
+  // Effect to process pending press release jobs
+  useEffect(() => {
+    const processPendingPressJobs = async () => {
+      if (isProcessingPress) return;
+
+      const pendingJob = pressJobs.find(j => j.status === AppStatus.IDLE);
+      if (!pendingJob) return;
+
+      setIsProcessingPress(true);
+
+      // Mark as processing
+      setPressJobs(prev => prev.map(j => j.id === pendingJob.id ? { ...j, status: AppStatus.PROCESSING } : j));
+
+      try {
+        const data = await geminiService.processPressRelease(pendingJob.base64, pendingJob.mimeType, pendingJob.userAngle);
+
+        // Save to Supabase if logged in
+        if (session?.user?.id) {
+          try {
+            await supabase.from('audio_jobs').insert({ // Reusing same table for now or a different one? 
+              user_id: session.user.id,
+              file_name: pendingJob.file.name,
+              mime_type: pendingJob.mimeType,
+              status: AppStatus.COMPLETED,
+              result: data
+            });
+          } catch (e) {
+            console.error('Failed to save press release to cloud:', e);
+          }
+        }
+
+        setPressJobs(prev => prev.map(j => j.id === pendingJob.id ? { ...j, status: AppStatus.COMPLETED, result: data } : j));
+        saveToHistory(data, AppMode.PRESS_RELEASE, pendingJob.file.name);
+      } catch (error) {
+        console.error('Error processing press release job:', error);
+        setPressJobs(prev => prev.map(j => j.id === pendingJob.id ? { ...j, status: AppStatus.ERROR } : j));
+      } finally {
+        setIsProcessingPress(false);
+      }
+    };
+
+    processPendingPressJobs();
+  }, [pressJobs, session, isProcessingPress]);
 
   const handleSaveApiKey = () => {
     localStorage.setItem('GEMINI_API_KEY', apiKey);
@@ -210,9 +283,18 @@ const App: React.FC = () => {
       setAudioJobs(prev => [...prev, newJob]);
       if (!activeAudioJobId) setActiveAudioJobId(newJob.id);
     } else {
-      setPressFileState(newState);
-      setPressResult(null);
-      setPressStatus(AppStatus.IDLE);
+      if (!newState.file || !newState.base64 || !newState.mimeType) return;
+      const newJob: PressReleaseJob = {
+        id: crypto.randomUUID(),
+        file: newState.file,
+        base64: newState.base64,
+        mimeType: newState.mimeType,
+        status: AppStatus.IDLE,
+        userAngle: userAngle,
+        timestamp: new Date().toLocaleTimeString()
+      };
+      setPressJobs(prev => [...prev, newJob]);
+      if (!activePressJobId) setActivePressJobId(newJob.id);
     }
   };
 
@@ -225,29 +307,17 @@ const App: React.FC = () => {
         setActiveAudioJobId(null);
       }
     } else {
-      setPressFileState({ file: null, base64: null, mimeType: null });
-      setPressResult(null);
-      setPressStatus(AppStatus.IDLE);
+      if (activePressJobId) {
+        setPressJobs(prev => prev.filter(j => j.id !== activePressJobId));
+        setActivePressJobId(null);
+      }
       setUserAngle('');
     }
   };
 
   const startAnalysis = async () => {
-    if (mode === AppMode.AUDIO) {
-      // Audio jobs start automatically via useEffect
-      return;
-    } else {
-      if (!pressFileState.base64 || !pressFileState.mimeType) return;
-      setPressStatus(AppStatus.PROCESSING);
-      try {
-        const data = await geminiService.processPressRelease(pressFileState.base64, pressFileState.mimeType, userAngle);
-        setPressResult(data);
-        if (pressFileState.file) saveToHistory(data, AppMode.PRESS_RELEASE, pressFileState.file.name);
-        setPressStatus(AppStatus.COMPLETED);
-      } catch (error) {
-        setPressStatus(AppStatus.ERROR);
-      }
-    }
+    // Both modes now start automatically via useEffect
+    return;
   };
 
   const activeAudioJob = audioJobs.find(j => j.id === activeAudioJobId);
@@ -373,6 +443,7 @@ const App: React.FC = () => {
           await supabase.auth.signOut();
           setHistory([]);
           setAudioJobs([]);
+          setPressJobs([]);
           setIsAuthOpen(false);
           window.location.reload();
         }}
@@ -417,18 +488,33 @@ const App: React.FC = () => {
               const newJob: TranscriptionJob = {
                 id: crypto.randomUUID(),
                 file: new File([], item.fileName), // Placeholder
-                base64: '', // We don't store base64 in history
+                base64: '',
                 mimeType: '',
                 status: AppStatus.COMPLETED,
-                result: item.data,
+                result: item.data as AnalysisResultType,
                 timestamp: new Date(item.date).toLocaleTimeString()
               };
               setAudioJobs(prev => [...prev, newJob]);
               setActiveAudioJobId(newJob.id);
             }
           } else if (item.mode === AppMode.PRESS_RELEASE) {
-            setPressResult(item.data as PressReleaseResultType);
-            setPressStatus(AppStatus.COMPLETED);
+            // Check if it's already in jobs, otherwise add it
+            const existing = pressJobs.find(j => j.result === item.data);
+            if (existing) {
+              setActivePressJobId(existing.id);
+            } else {
+              const newJob: PressReleaseJob = {
+                id: crypto.randomUUID(),
+                file: new File([], item.fileName), // Placeholder
+                base64: '',
+                mimeType: '',
+                status: AppStatus.COMPLETED,
+                result: item.data as PressReleaseResultType,
+                timestamp: new Date(item.date).toLocaleTimeString()
+              };
+              setPressJobs(prev => [...prev, newJob]);
+              setActivePressJobId(newJob.id);
+            }
           }
           setIsHistoryOpen(false);
         }}
@@ -443,7 +529,7 @@ const App: React.FC = () => {
       />
 
       <main className="flex-grow max-w-7xl mx-auto w-full py-16 px-4 lg:px-8">
-        {((mode === AppMode.AUDIO && audioJobs.length === 0) || (mode === AppMode.PRESS_RELEASE && pressStatus === AppStatus.IDLE)) && mode !== AppMode.WRITING_ASSISTANT && (
+        {((mode === AppMode.AUDIO && audioJobs.length === 0) || (mode === AppMode.PRESS_RELEASE && pressJobs.length === 0)) && mode !== AppMode.WRITING_ASSISTANT && (
           <div className="text-center mb-16 animate-in fade-in duration-1000">
             <h1 className="text-7xl font-black tracking-tighter text-servimedia-gray mb-6 leading-tight">
               {mode === AppMode.AUDIO ? (<>De <span className="text-servimedia-pink">Audio</span> a Texto</>) : (<>Procesador <span className="text-servimedia-orange">Notas de Prensa</span></>)}
@@ -468,7 +554,16 @@ const App: React.FC = () => {
                 activeJobId={activeAudioJobId}
                 onJobClick={setActiveAudioJobId}
                 onClearQueue={() => setAudioJobs([])}
-                onAddMore={() => (document.querySelector('input[type="file"]') as HTMLInputElement)?.click()}
+                onAddMore={() => (document.querySelector('input[name="file-input-AUDIO"]') as HTMLInputElement || document.querySelector('input[type="file"]'))?.click()}
+              />
+            )}
+            {mode === AppMode.PRESS_RELEASE && (
+              <PressReleaseQueue
+                jobs={pressJobs}
+                activeJobId={activePressJobId}
+                onJobClick={setActivePressJobId}
+                onClearQueue={() => setPressJobs([])}
+                onAddMore={() => (document.querySelector('input[name="file-input-PRESS_RELEASE"]') as HTMLInputElement || document.querySelector('input[type="file"]'))?.click()}
               />
             )}
 
@@ -483,15 +578,15 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {(mode === AppMode.PRESS_RELEASE && (pressStatus === AppStatus.IDLE || pressStatus === AppStatus.PROCESSING)) && (
+            {(mode === AppMode.PRESS_RELEASE && !activePressJobId) && (
               <div className="space-y-16">
                 <FileUploader
                   onFileSelected={handleFileSelected}
                   onClear={handleClear}
-                  isLoading={pressStatus === AppStatus.PROCESSING}
+                  isLoading={isProcessingPress}
                   mode={mode}
                 />
-                {pressStatus === AppStatus.IDLE && pressFileState.file && (
+                {!isProcessingPress && (
                   <div className="max-w-3xl mx-auto bg-white p-10 rounded-[2.5rem] border border-servimedia-border shadow-2xl shadow-servimedia-orange/5">
                     <div className="flex items-center gap-3 mb-8 text-servimedia-orange">
                       <Target className="w-6 h-6" />
@@ -500,18 +595,11 @@ const App: React.FC = () => {
                     <textarea value={userAngle} onChange={(e) => setUserAngle(e.target.value)} placeholder="Sugiere un enfoque para el teletipo" className="w-full h-40 p-6 bg-servimedia-light border-none rounded-3xl focus:ring-4 focus:ring-servimedia-orange/10 outline-none font-sans transition-all text-xl placeholder:text-servimedia-gray/20" />
                   </div>
                 )}
-                {pressStatus === AppStatus.IDLE && pressFileState.file && (
-                  <div className="flex justify-center">
-                    <button onClick={startAnalysis} className="px-20 py-8 rounded-full font-black text-white text-base uppercase tracking-[0.3em] shadow-[0_20px_50px_rgba(0,0,0,0.1)] btn-servi flex items-center gap-4 bg-servimedia-orange hover:shadow-servimedia-orange/20">
-                      Generar Contenido <ChevronRight className="w-5 h-5" />
-                    </button>
-                  </div>
-                )}
               </div>
             )}
 
             {((mode === AppMode.AUDIO && activeAudioJob?.status === AppStatus.PROCESSING) ||
-              (mode === AppMode.PRESS_RELEASE && pressStatus === AppStatus.PROCESSING)) && (
+              (mode === AppMode.PRESS_RELEASE && pressJobs.find(j => j.id === activePressJobId)?.status === AppStatus.PROCESSING)) && (
                 <div className="flex flex-col items-center justify-center py-40 animate-in zoom-in-95">
                   <div className={`w-28 h-28 border-8 border-t-transparent rounded-full animate-spin mb-12 ${mode === AppMode.AUDIO ? 'border-servimedia-pink' : 'border-servimedia-orange'}`}></div>
                   <h2 className="text-4xl font-black text-servimedia-gray uppercase tracking-tighter">Procesando en Redacción...</h2>
@@ -520,14 +608,14 @@ const App: React.FC = () => {
               )}
 
             {((mode === AppMode.AUDIO && activeAudioJob?.status === AppStatus.COMPLETED) ||
-              (mode === AppMode.PRESS_RELEASE && pressStatus === AppStatus.COMPLETED)) && (
+              (mode === AppMode.PRESS_RELEASE && pressJobs.find(j => j.id === activePressJobId)?.status === AppStatus.COMPLETED)) && (
                 <div className="animate-in fade-in slide-in-from-bottom-12 duration-700">
                   <div className="flex items-center justify-between mb-12 border-b-2 border-servimedia-border pb-10">
                     <button onClick={handleClear} className="text-xs font-black uppercase tracking-[0.2em] flex items-center gap-3 text-servimedia-gray/30 hover:text-servimedia-pink transition-all group">
                       <span className="group-hover:-translate-x-1 transition-transform">&larr;</span> {mode === AppMode.AUDIO ? 'Cerrar Vista' : 'Nueva Solicitud'}
                     </button>
                     <div className="flex items-center gap-3 text-xs font-bold text-servimedia-gray/20 uppercase tracking-[0.3em]">
-                      <Clock className="w-4 h-4" /> Registro: {activeAudioJob ? activeAudioJob.timestamp : new Date().toLocaleTimeString()}
+                      <Clock className="w-4 h-4" /> Registro: {mode === AppMode.AUDIO ? activeAudioJob?.timestamp : pressJobs.find(j => j.id === activePressJobId)?.timestamp}
                     </div>
                   </div>
                   {mode === AppMode.AUDIO && activeAudioJob?.result && (
@@ -540,10 +628,10 @@ const App: React.FC = () => {
                       />
                     </div>
                   )}
-                  {mode === AppMode.PRESS_RELEASE && pressResult && (
+                  {mode === AppMode.PRESS_RELEASE && pressJobs.find(j => j.id === activePressJobId)?.result && (
                     <div className="space-y-6">
                       <h2 className="text-xs font-black uppercase tracking-[0.5em] text-servimedia-orange mb-4">Módulo: Notas de Prensa</h2>
-                      <PressReleaseResult result={pressResult} pdfFile={pressFileState.file || undefined} />
+                      <PressReleaseResult result={pressJobs.find(j => j.id === activePressJobId)!.result!} pdfFile={pressJobs.find(j => j.id === activePressJobId)?.file} />
                     </div>
                   )}
                 </div>

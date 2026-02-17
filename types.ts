@@ -75,3 +75,14 @@ export interface TranscriptionJob {
   result?: AnalysisResult;
   timestamp: string;
 }
+
+export interface PressReleaseJob {
+  id: string;
+  file: File;
+  base64: string;
+  mimeType: string;
+  status: AppStatus;
+  result?: PressReleaseResult;
+  userAngle?: string;
+  timestamp: string;
+}
