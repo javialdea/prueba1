@@ -102,6 +102,19 @@ const App: React.FC = () => {
         // Set admin status
         setIsAdmin(data.is_admin || false);
 
+        // Fetch Global API Key from app_settings
+        const { data: appData } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('id', 'gemini_api_key')
+          .single();
+
+        if (appData?.value) {
+          setApiKey(appData.value);
+        } else if (data.gemini_api_key) {
+          setApiKey(data.gemini_api_key);
+        }
+
         // Check if user is active
         if (data.is_active === false) {
           await supabase.auth.signOut();

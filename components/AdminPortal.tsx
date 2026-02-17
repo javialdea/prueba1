@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     X, Users, BarChart3, Settings,
     Shield, ShieldAlert, ToggleLeft, ToggleRight,
-    Loader2, CheckCircle, Search, Save, KeyRound
+    Loader2, CheckCircle, Search, Save, KeyRound, Sparkles
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 
@@ -26,6 +26,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
     const [search, setSearch] = useState('');
     const [stats, setStats] = useState({ totalAudios: 0, totalPressReleases: 0, totalUsers: 0 });
     const [regKey, setRegKey] = useState('');
+    const [geminiKey, setGeminiKey] = useState('');
     const [savingKey, setSavingKey] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
@@ -55,6 +56,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                 .single();
 
             if (kData) setRegKey(kData.value);
+
+            // Fetch Gemini Key
+            const { data: gData } = await supabase
+                .from('app_settings')
+                .select('value')
+                .eq('id', 'gemini_api_key')
+                .single();
+
+            if (gData) setGeminiKey(gData.value);
 
             // Fetch Stats (Mock for now, would count from audio_jobs table)
             const { count: audioCount } = await supabase.from('audio_jobs').select('*', { count: 'exact', head: true });
@@ -156,8 +166,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id as any)}
                                 className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab.id
-                                        ? 'bg-servimedia-pink text-white shadow-lg shadow-servimedia-pink/20'
-                                        : 'text-servimedia-gray/40 hover:text-servimedia-gray hover:bg-white'
+                                    ? 'bg-servimedia-pink text-white shadow-lg shadow-servimedia-pink/20'
+                                    : 'text-servimedia-gray/40 hover:text-servimedia-gray hover:bg-white'
                                     }`}
                             >
                                 <tab.icon className="w-4 h-4" />
@@ -219,8 +229,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                                                 <button
                                                     onClick={() => toggleAdmin(profile.id, profile.is_admin)}
                                                     className={`flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${profile.is_admin
-                                                            ? 'bg-servimedia-pink/10 text-servimedia-pink border border-servimedia-pink/20'
-                                                            : 'bg-servimedia-gray/5 text-servimedia-gray/40 border border-servimedia-gray/10'
+                                                        ? 'bg-servimedia-pink/10 text-servimedia-pink border border-servimedia-pink/20'
+                                                        : 'bg-servimedia-gray/5 text-servimedia-gray/40 border border-servimedia-gray/10'
                                                         }`}
                                                 >
                                                     <Shield className="w-3 h-3" />
@@ -229,8 +239,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${profile.is_active
-                                                        ? 'bg-green-50 text-green-600 border border-green-100'
-                                                        : 'bg-red-50 text-red-600 border border-red-100'
+                                                    ? 'bg-green-50 text-green-600 border border-green-100'
+                                                    : 'bg-red-50 text-red-600 border border-red-100'
                                                     }`}>
                                                     <div className={`w-1.5 h-1.5 rounded-full ${profile.is_active ? 'bg-green-500' : 'bg-red-500'}`} />
                                                     {profile.is_active ? 'Activo' : 'Inactivo'}
@@ -301,6 +311,52 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                                     >
                                         {savingKey ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                                         {savingKey ? 'Guardando...' : 'Actualizar Clave'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="flex items-center gap-3 mb-4">
+                                    <Sparkles className="w-5 h-5 text-servimedia-pink" />
+                                    <h3 className="text-sm font-black text-servimedia-gray uppercase tracking-wider">Google Gemini API</h3>
+                                </div>
+                                <div className="bg-servimedia-light/30 rounded-3xl p-8 border border-servimedia-border space-y-6">
+                                    <div>
+                                        <label className="text-[10px] font-black text-servimedia-gray/40 uppercase tracking-[0.3em] block mb-3 ml-2">
+                                            API Key Global
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={geminiKey}
+                                            onChange={(e) => setGeminiKey(e.target.value)}
+                                            placeholder="Introduce la API Key de Google"
+                                            className="w-full p-4 bg-white border border-servimedia-border rounded-2xl focus:ring-4 focus:ring-servimedia-pink/10 outline-none font-sans transition-all text-lg mb-4"
+                                        />
+                                        <p className="text-[10px] text-servimedia-gray/40 px-2 leading-relaxed">
+                                            Esta clave se usará de forma global para todos los usuarios de la plataforma. Asegúrate de que tenga cuota suficiente.
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={async () => {
+                                            setSavingKey(true);
+                                            try {
+                                                const { error } = await supabase
+                                                    .from('app_settings')
+                                                    .upsert({ id: 'gemini_api_key', value: geminiKey });
+                                                if (error) throw error;
+                                                setMessage({ type: 'success', text: 'API Key actualizada correctamente' });
+                                                setTimeout(() => setMessage(null), 3000);
+                                            } catch (err) {
+                                                setMessage({ type: 'error', text: 'Error al actualizar la API Key' });
+                                            } finally {
+                                                setSavingKey(false);
+                                            }
+                                        }}
+                                        disabled={savingKey || !geminiKey}
+                                        className="w-full py-4 bg-servimedia-pink text-white rounded-2xl font-black uppercase tracking-wider hover:bg-servimedia-pink/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-servimedia-pink/20"
+                                    >
+                                        {savingKey ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                                        {savingKey ? 'Guardando...' : 'Guardar API Key'}
                                     </button>
                                 </div>
                             </div>
