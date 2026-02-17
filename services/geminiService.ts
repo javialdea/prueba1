@@ -34,8 +34,8 @@ const normalizeMimeType = (mimeType: string): string => {
 };
 
 const DEFAULT_MODELS = {
-  PRO: "gemini-1.5-pro",
-  FLASH: "gemini-1.5-flash"
+  PRO: "gemini-2.5-pro",
+  FLASH: "gemini-2.5-flash"
 };
 
 async function retryOperation<T>(operation: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
@@ -310,38 +310,25 @@ const verifyManualSelection = async (text: string): Promise<any> => {
             
             INSTRUCCIONES:
             1. Identifica la afirmación principal.
-            2. Usa búsqueda en tiempo real para contrastar el dato.
+            2. Usa búsqueda en tiempo real para contrastar el dato con GOOGLE SEARCH.
             3. Determina un veredicto: 'Verdadero', 'Falso', 'Engañoso', 'Inconsistente', 'Dudoso'.
             4. Proporciona una explicación breve y profesional.
             5. EXTRAE LOS ENLACES (URLs) de las fuentes que has consultado.
             
-            DEBES DEVOLVER UN JSON VÁLIDO CON LA ESTRUCTURA SCHEMA DEFINIDA.` },
+            FORMATO DE SALIDA OBLIGATORIO (JSON PURO, SIN MARKDOWN):
+            {
+              "claim": "string",
+              "verdict": "Verdadero" | "Falso" | "Engañoso" | "Inconsistente" | "Dudoso",
+              "explanation": "string",
+              "sources": [
+                { "title": "string", "url": "string" }
+              ]
+            }` },
           ],
         },
         config: {
           temperature: 0.1,
-          tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              claim: { type: Type.STRING },
-              verdict: { type: Type.STRING, enum: ['Verdadero', 'Falso', 'Engañoso', 'Inconsistente', 'Dudoso'] },
-              explanation: { type: Type.STRING },
-              sources: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    title: { type: Type.STRING },
-                    url: { type: Type.STRING }
-                  },
-                  required: ["title", "url"]
-                }
-              }
-            },
-            required: ["claim", "verdict", "explanation"]
-          }
+          tools: [{ googleSearch: {} }]
         }
       });
 
