@@ -45,25 +45,30 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                 .select('*')
                 .order('created_at', { ascending: false });
 
-            if (pError) throw pError;
+            if (pError) {
+                console.error('Error fetching profiles:', pError);
+                throw pError;
+            }
             setProfiles(pData || []);
 
             // Fetch Registration Key
-            const { data: kData } = await supabase
+            const { data: kData, error: kError } = await supabase
                 .from('app_settings')
                 .select('value')
                 .eq('id', 'registration_key')
                 .maybeSingle();
 
+            if (kError) console.error('Error fetching reg key:', kError);
             if (kData) setRegKey(kData.value);
 
             // Fetch Gemini Key
-            const { data: gData } = await supabase
+            const { data: gData, error: gError } = await supabase
                 .from('app_settings')
                 .select('value')
                 .eq('id', 'gemini_api_key')
                 .maybeSingle();
 
+            if (gError) console.error('Error fetching gemini key:', gError);
             if (gData) setGeminiKey(gData.value);
 
             // Fetch Stats
@@ -127,6 +132,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
     const updateRegKey = async () => {
         setSavingKey(true);
         try {
+            console.log('Updating registration key...');
             const { error } = await supabase
                 .from('app_settings')
                 .upsert({ id: 'registration_key', value: regKey });
@@ -134,8 +140,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
             if (error) throw error;
             setMessage({ type: 'success', text: 'Clave de registro actualizada correctamente' });
             setTimeout(() => setMessage(null), 3000);
-        } catch (err) {
-            setMessage({ type: 'error', text: 'Error al actualizar la clave' });
+        } catch (err: any) {
+            console.error('Error updating reg key:', err);
+            setMessage({ type: 'error', text: `Error: ${err.message || err.error_description || 'No se pudo actualizar la clave'}` });
         } finally {
             setSavingKey(false);
         }
@@ -359,8 +366,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                                                 if (error) throw error;
                                                 setMessage({ type: 'success', text: 'API Key actualizada correctamente' });
                                                 setTimeout(() => setMessage(null), 3000);
-                                            } catch (err) {
-                                                setMessage({ type: 'error', text: 'Error al actualizar la API Key' });
+                                            } catch (err: any) {
+                                                console.error('Error updating Gemini key:', err);
+                                                setMessage({ type: 'error', text: `Error: ${err.message || 'Error al actualizar la API Key'}` });
                                             } finally {
                                                 setSavingKey(false);
                                             }
