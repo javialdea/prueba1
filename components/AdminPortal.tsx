@@ -1,0 +1,326 @@
+import React, { useState, useEffect } from 'react';
+import {
+    X, Users, BarChart3, Settings,
+    Shield, ShieldAlert, ToggleLeft, ToggleRight,
+    Loader2, CheckCircle, Search, Save, KeyRound
+} from 'lucide-react';
+import { supabase } from '../services/supabase';
+
+interface Profile {
+    id: string;
+    email: string;
+    is_admin: boolean;
+    is_active: boolean;
+    created_at: string;
+}
+
+interface AdminPortalProps {
+    isOpen: boolean;
+    onClose: () => void;
+}
+
+export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => {
+    const [activeTab, setActiveTab] = useState<'users' | 'stats' | 'config'>('users');
+    const [profiles, setProfiles] = useState<Profile[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
+    const [stats, setStats] = useState({ totalAudios: 0, totalPressReleases: 0, totalUsers: 0 });
+    const [regKey, setRegKey] = useState('');
+    const [savingKey, setSavingKey] = useState(false);
+    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            fetchData();
+        }
+    }, [isOpen]);
+
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            // Fetch Profiles
+            const { data: pData, error: pError } = await supabase
+                .from('profiles')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (pError) throw pError;
+            setProfiles(pData || []);
+
+            // Fetch Registration Key
+            const { data: kData } = await supabase
+                .from('app_settings')
+                .select('value')
+                .eq('id', 'registration_key')
+                .single();
+
+            if (kData) setRegKey(kData.value);
+
+            // Fetch Stats (Mock for now, would count from audio_jobs table)
+            const { count: audioCount } = await supabase.from('audio_jobs').select('*', { count: 'exact', head: true });
+
+            setStats({
+                totalUsers: pData?.length || 0,
+                totalAudios: audioCount || 0,
+                totalPressReleases: 0 // Would need press_jobs table check
+            });
+
+        } catch (err: any) {
+            console.error('Error fetching admin data:', err);
+            setMessage({ type: 'error', text: 'Error al cargar datos de administración' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const toggleAdmin = async (profileId: string, currentStatus: boolean) => {
+        try {
+            const { error } = await supabase
+                .from('profiles')
+                .update({ is_admin: !currentStatus })
+                .eq('id', profileId);
+
+            if (error) throw error;
+            setProfiles(profiles.map(p => p.id === profileId ? { ...p, is_admin: !currentStatus } : p));
+        } catch (err) {
+            setMessage({ type: 'error', text: 'No se pudo actualizar el estado de admin' });
+        }
+    };
+
+    const toggleActive = async (profileId: string, currentStatus: boolean) => {
+        try {
+            const { error } = await supabase
+                .from('profiles')
+                .update({ is_active: !currentStatus })
+                .eq('id', profileId);
+
+            if (error) throw error;
+            setProfiles(profiles.map(p => p.id === profileId ? { ...p, is_active: !currentStatus } : p));
+        } catch (err) {
+            setMessage({ type: 'error', text: 'No se pudo actualizar el estado de la cuenta' });
+        }
+    };
+
+    const updateRegKey = async () => {
+        setSavingKey(true);
+        try {
+            const { error } = await supabase
+                .from('app_settings')
+                .upsert({ id: 'registration_key', value: regKey });
+
+            if (error) throw error;
+            setMessage({ type: 'success', text: 'Clave de registro actualizada correctamente' });
+            setTimeout(() => setMessage(null), 3000);
+        } catch (err) {
+            setMessage({ type: 'error', text: 'Error al actualizar la clave' });
+        } finally {
+            setSavingKey(false);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    const filteredProfiles = profiles.filter(p =>
+        p.email?.toLowerCase().includes(search.toLowerCase())
+    );
+
+    return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="bg-white w-full max-w-5xl rounded-[2.5rem] shadow-2xl overflow-hidden border border-servimedia-border animate-in zoom-in-95 duration-300 h-[85vh] flex flex-col">
+
+                {/* Header */}
+                <div className="p-8 border-b border-servimedia-light flex items-center justify-between bg-gradient-to-r from-servimedia-gray to-servimedia-gray/80 text-white">
+                    <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center">
+                            <Shield className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                            <h2 className="font-black text-xl tracking-tighter uppercase">Panel de Control</h2>
+                            <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">Administración Servimedia IA</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-all">
+                        <X className="w-6 h-6" />
+                    </button>
+                </div>
+
+                {/* Tabs & Search */}
+                <div className="bg-servimedia-light/50 px-8 py-4 border-b border-servimedia-border flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex gap-2">
+                        {[
+                            { id: 'users', label: 'Usuarios', icon: Users },
+                            { id: 'stats', label: 'Estadísticas', icon: BarChart3 },
+                            { id: 'config', label: 'Configuración', icon: Settings },
+                        ].map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id as any)}
+                                className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab.id
+                                        ? 'bg-servimedia-pink text-white shadow-lg shadow-servimedia-pink/20'
+                                        : 'text-servimedia-gray/40 hover:text-servimedia-gray hover:bg-white'
+                                    }`}
+                            >
+                                <tab.icon className="w-4 h-4" />
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {activeTab === 'users' && (
+                        <div className="relative w-full max-w-xs">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-servimedia-gray/20" />
+                            <input
+                                type="text"
+                                placeholder="Buscar usuario..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="w-full pl-11 pr-4 py-2 bg-white border border-servimedia-border rounded-full text-xs outline-none focus:ring-2 focus:ring-servimedia-pink/10 transition-all font-sans"
+                            />
+                        </div>
+                    )}
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-8">
+                    {message && (
+                        <div className={`mb-6 p-4 rounded-2xl border flex items-center gap-3 animate-in slide-in-from-top-4 duration-300 ${message.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'
+                            }`}>
+                            {message.type === 'success' ? <CheckCircle className="w-5 h-5" /> : <ShieldAlert className="w-5 h-5" />}
+                            <p className="text-sm font-bold">{message.text}</p>
+                        </div>
+                    )}
+
+                    {loading ? (
+                        <div className="flex flex-col items-center justify-center h-full gap-4 text-servimedia-gray/20">
+                            <Loader2 className="w-12 h-12 animate-spin" />
+                            <p className="text-[10px] font-black uppercase tracking-[0.3em]">Cargando datos...</p>
+                        </div>
+                    ) : activeTab === 'users' ? (
+                        <div className="bg-white border border-servimedia-border rounded-3xl overflow-hidden shadow-sm">
+                            <table className="w-full text-left">
+                                <thead className="bg-servimedia-light/50 border-b border-servimedia-border">
+                                    <tr>
+                                        <th className="px-6 py-4 text-[10px] font-black uppercase text-servimedia-gray/40 tracking-widest">Usuario</th>
+                                        <th className="px-6 py-4 text-[10px] font-black uppercase text-servimedia-gray/40 tracking-widest">Rol</th>
+                                        <th className="px-6 py-4 text-[10px] font-black uppercase text-servimedia-gray/40 tracking-widest">Estado</th>
+                                        <th className="px-6 py-4 text-[10px] font-black uppercase text-servimedia-gray/40 tracking-widest text-right">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-servimedia-light">
+                                    {filteredProfiles.map(profile => (
+                                        <tr key={profile.id} className="hover:bg-servimedia-light/20 transition-colors">
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm font-black text-servimedia-gray">{profile.email}</span>
+                                                    <span className="text-[9px] text-servimedia-gray/40 uppercase font-bold tracking-tighter">ID: {profile.id.slice(0, 8)}...</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <button
+                                                    onClick={() => toggleAdmin(profile.id, profile.is_admin)}
+                                                    className={`flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest transition-all ${profile.is_admin
+                                                            ? 'bg-servimedia-pink/10 text-servimedia-pink border border-servimedia-pink/20'
+                                                            : 'bg-servimedia-gray/5 text-servimedia-gray/40 border border-servimedia-gray/10'
+                                                        }`}
+                                                >
+                                                    <Shield className="w-3 h-3" />
+                                                    {profile.is_admin ? 'Admin' : 'Usuario'}
+                                                </button>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${profile.is_active
+                                                        ? 'bg-green-50 text-green-600 border border-green-100'
+                                                        : 'bg-red-50 text-red-600 border border-red-100'
+                                                    }`}>
+                                                    <div className={`w-1.5 h-1.5 rounded-full ${profile.is_active ? 'bg-green-500' : 'bg-red-500'}`} />
+                                                    {profile.is_active ? 'Activo' : 'Inactivo'}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <button
+                                                    onClick={() => toggleActive(profile.id, profile.is_active)}
+                                                    className="p-2 hover:bg-servimedia-light rounded-xl transition-all"
+                                                >
+                                                    {profile.is_active ? (
+                                                        <ToggleRight className="w-7 h-7 text-green-500" />
+                                                    ) : (
+                                                        <ToggleLeft className="w-7 h-7 text-servimedia-gray/20" />
+                                                    )}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : activeTab === 'stats' ? (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="p-8 bg-gradient-to-br from-servimedia-pink to-servimedia-pink/80 rounded-3xl text-white shadow-xl shadow-servimedia-pink/20">
+                                <Users className="w-8 h-8 mb-4 opacity-50" />
+                                <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-1">Total Usuarios</p>
+                                <h3 className="text-4xl font-black">{stats.totalUsers}</h3>
+                            </div>
+                            <div className="p-8 bg-gradient-to-br from-green-600 to-green-500 rounded-3xl text-white shadow-xl shadow-green-600/20">
+                                <BarChart3 className="w-8 h-8 mb-4 opacity-50" />
+                                <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-1">Audios Procesados</p>
+                                <h3 className="text-4xl font-black">{stats.totalAudios}</h3>
+                            </div>
+                            <div className="p-8 bg-gradient-to-br from-servimedia-orange to-servimedia-orange/80 rounded-3xl text-white shadow-xl shadow-servimedia-orange/20">
+                                <Save className="w-8 h-8 mb-4 opacity-50" />
+                                <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-1">Notas de Prensa</p>
+                                <h3 className="text-4xl font-black">{stats.totalPressReleases}</h3>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="max-w-md space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                            <div>
+                                <div className="flex items-center gap-3 mb-4">
+                                    <KeyRound className="w-5 h-5 text-servimedia-pink" />
+                                    <h3 className="text-sm font-black text-servimedia-gray uppercase tracking-wider">Gestión de Acceso</h3>
+                                </div>
+                                <div className="bg-servimedia-light/30 rounded-3xl p-8 border border-servimedia-border space-y-6">
+                                    <div>
+                                        <label className="text-[10px] font-black text-servimedia-gray/40 uppercase tracking-[0.3em] block mb-3 ml-2">
+                                            Clave de Registro Actual
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={regKey}
+                                            onChange={(e) => setRegKey(e.target.value)}
+                                            placeholder="Ej: servimedia2026"
+                                            className="w-full p-4 bg-white border border-servimedia-border rounded-2xl focus:ring-4 focus:ring-servimedia-pink/10 outline-none font-sans transition-all text-lg mb-4"
+                                        />
+                                        <p className="text-[10px] text-servimedia-gray/40 px-2 leading-relaxed">
+                                            Esta es la clave que los nuevos usuarios deben introducir para crear una cuenta. Al cambiarla aquí, se actualizará instantáneamente para todo el sistema.
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={updateRegKey}
+                                        disabled={savingKey || !regKey}
+                                        className="w-full py-4 bg-servimedia-pink text-white rounded-2xl font-black uppercase tracking-wider hover:bg-servimedia-pink/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-servimedia-pink/20"
+                                    >
+                                        {savingKey ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                                        {savingKey ? 'Guardando...' : 'Actualizar Clave'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div className="px-8 py-4 bg-servimedia-light/30 border-t border-servimedia-border flex justify-between items-center">
+                    <p className="text-[9px] font-black text-servimedia-gray/20 uppercase tracking-widest italic">
+                        Servimedia IA • Panel de Control Avanzado
+                    </p>
+                    <button
+                        onClick={onClose}
+                        className="px-6 py-2 bg-servimedia-gray text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all"
+                    >
+                        Cerrar Panel
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};

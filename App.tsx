@@ -14,6 +14,7 @@ import { AudioQueue } from './components/AudioQueue';
 import { LandingPage } from './components/LandingPage';
 import { AuthModal } from './components/AuthModal';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
+import { AdminPortal } from './components/AdminPortal';
 
 import { supabase } from './services/supabase';
 import { Session } from '@supabase/supabase-js';
@@ -37,7 +38,7 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isCostEstimatorOpen, setIsCostEstimatorOpen] = useState(false);
+  const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [currentRoute, setCurrentRoute] = useState(window.location.hash);
@@ -86,7 +87,7 @@ const App: React.FC = () => {
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('gemini_api_key, is_admin')
+        .select('gemini_api_key, is_admin, is_active')
         .eq('id', session.user.id)
         .single();
 
@@ -100,6 +101,15 @@ const App: React.FC = () => {
         }
         // Set admin status
         setIsAdmin(data.is_admin || false);
+
+        // Check if user is active
+        if (data.is_active === false) {
+          await supabase.auth.signOut();
+          setSession(null);
+          setIsAdmin(false);
+          alert('Tu cuenta ha sido desactivada. Contacta con un administrador.');
+          window.location.href = '/';
+        }
       } else {
         const storedKey = localStorage.getItem('GEMINI_API_KEY');
         if (storedKey) setApiKey(storedKey);
@@ -402,6 +412,14 @@ const App: React.FC = () => {
     return <ResetPasswordPage />;
   }
 
+  // Show admin portal if route is #/admin and user is admin
+  if (currentRoute === '#/admin' && isAdmin) {
+    return <AdminPortal isOpen={true} onClose={() => {
+      window.location.hash = '';
+      setCurrentRoute('');
+    }} />;
+  }
+
   if (!session) {
     return (
       <>
@@ -426,7 +444,7 @@ const App: React.FC = () => {
         onModeChange={setMode}
         onHistoryOpen={() => setIsHistoryOpen(true)}
         onSettingsOpen={() => setIsSettingsOpen(true)}
-        onCostEstimatorOpen={() => setIsCostEstimatorOpen(true)}
+        onCostEstimatorOpen={() => setIsAdminPortalOpen(true)}
         onAuthOpen={() => setIsAuthOpen(true)}
         onLogout={async () => {
           await supabase.auth.signOut();
@@ -460,7 +478,7 @@ const App: React.FC = () => {
         />
       )}
 
-      <CostEstimator isOpen={isCostEstimatorOpen} onClose={() => setIsCostEstimatorOpen(false)} />
+      <AdminPortal isOpen={isAdminPortalOpen} onClose={() => setIsAdminPortalOpen(false)} />
 
       <HistoryDrawer
         isOpen={isHistoryOpen}

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Mic2, Newspaper, PenTool, History as HistoryIcon, Settings, User, LogIn, LogOut, DollarSign } from 'lucide-react';
+import { Mic2, Newspaper, PenTool, History as HistoryIcon, Settings, User, LogIn, LogOut, DollarSign, Shield } from 'lucide-react';
 import { AppMode } from '../types';
 
 interface RobotLogoProps {
@@ -96,9 +96,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                             <span className="hidden lg:inline">Ajustes</span>
                         </button>
                         {isAdmin && (
-                            <button onClick={onCostEstimatorOpen} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40 hover:text-green-600 transition-colors">
-                                <DollarSign className="w-5 h-5" />
-                                <span className="hidden lg:inline">Costes</span>
+                            <button onClick={onCostEstimatorOpen} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40 hover:text-servimedia-pink transition-colors">
+                                <Shield className="w-5 h-5" />
+                                <span className="hidden lg:inline">Panel Admin</span>
                             </button>
                         )}
                         {userEmail ? (

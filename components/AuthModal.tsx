@@ -18,6 +18,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
     const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    const [dynamicRegKey, setDynamicRegKey] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchRegKey = async () => {
+            const { data } = await supabase
+                .from('app_settings')
+                .select('value')
+                .eq('id', 'registration_key')
+                .single();
+            if (data) setDynamicRegKey(data.value);
+        };
+        fetchRegKey();
+    }, []);
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -27,8 +40,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
 
         try {
             if (isSignUp) {
-                // Verificar clave de registro
-                if (registrationKey !== REGISTRATION_KEY) {
+                // Verificar clave de registro dinámica (si falla, usa la de env por si acaso)
+                const currentKey = dynamicRegKey || REGISTRATION_KEY;
+                if (registrationKey !== currentKey) {
                     throw new Error("Clave de registro incorrecta. Contacta con tu administrador.");
                 }
                 const { error } = await supabase.auth.signUp({ email, password });
