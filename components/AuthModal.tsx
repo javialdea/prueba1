@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/supabase';
 import { LogIn, UserPlus, Loader2, X, Mail, Lock, KeyRound } from 'lucide-react';
-import { OTPPasswordReset } from './OTPPasswordReset';
+import { ForgotPasswordModal } from './ForgotPasswordModal';
 
 interface AuthModalProps {
     onClose: () => void;
@@ -161,7 +161,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
                     )}
                 </form>
 
-                <OTPPasswordReset
+                <ForgotPasswordModal
                     isOpen={isForgotPasswordOpen}
                     onClose={() => setIsForgotPasswordOpen(false)}
                 />
