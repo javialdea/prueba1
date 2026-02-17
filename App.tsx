@@ -13,6 +13,7 @@ import { CostEstimator } from './components/CostEstimator';
 import { AudioQueue } from './components/AudioQueue';
 import { LandingPage } from './components/LandingPage';
 import { AuthModal } from './components/AuthModal';
+import { ResetPasswordPage } from './components/ResetPasswordPage';
 
 import { supabase } from './services/supabase';
 import { Session } from '@supabase/supabase-js';
@@ -39,6 +40,7 @@ const App: React.FC = () => {
   const [isCostEstimatorOpen, setIsCostEstimatorOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [currentRoute, setCurrentRoute] = useState(window.location.hash);
 
 
   useEffect(() => {
@@ -54,6 +56,13 @@ const App: React.FC = () => {
     });
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  // Hash-based routing for password reset
+  useEffect(() => {
+    const handleHashChange = () => setCurrentRoute(window.location.hash);
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
   const [apiKey, setApiKey] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
@@ -374,6 +383,11 @@ const App: React.FC = () => {
   };
 
 
+
+  // Show password reset page when hash is #/reset-password
+  if (currentRoute.startsWith('#/reset-password') || currentRoute.startsWith('#/auth-error')) {
+    return <ResetPasswordPage />;
+  }
 
   if (!session) {
     return (
