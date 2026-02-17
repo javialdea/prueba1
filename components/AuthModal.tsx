@@ -26,7 +26,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onClose }) => {
                 .from('app_settings')
                 .select('value')
                 .eq('id', 'registration_key')
-                .single();
+                .maybeSingle();
             if (data) setDynamicRegKey(data.value);
         };
         fetchRegKey();

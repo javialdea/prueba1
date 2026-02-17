@@ -101,6 +101,8 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected, onCl
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    // CRITICAL: Reset fileName so uploader doesn't stay in "success" view
+    setFileName(null);
   }, [onFileSelected, mode, onError]);
 
   const handleInternalClear = () => {

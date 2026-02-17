@@ -53,7 +53,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                 .from('app_settings')
                 .select('value')
                 .eq('id', 'registration_key')
-                .single();
+                .maybeSingle();
 
             if (kData) setRegKey(kData.value);
 
@@ -62,7 +62,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                 .from('app_settings')
                 .select('value')
                 .eq('id', 'gemini_api_key')
-                .single();
+                .maybeSingle();
 
             if (gData) setGeminiKey(gData.value);
 

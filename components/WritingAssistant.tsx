@@ -35,7 +35,7 @@ export const WritingAssistant: React.FC<WritingAssistantProps> = ({ session }) =
         .eq('user_id', session.user.id)
         .order('updated_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (!error && data) {
         setMessages(data.messages);
@@ -95,7 +95,9 @@ export const WritingAssistant: React.FC<WritingAssistantProps> = ({ session }) =
 
         let cloudUrl = '';
         if (session?.user) {
-          const filePath = `${session.user.id}/${crypto.randomUUID()}-${file.name}`;
+          // Sanitize filename: remove non-alphanumeric/dot/dash/underscore
+          const safeName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.-_]/g, "_");
+          const filePath = `${session.user.id}/${crypto.randomUUID()}-${safeName}`;
           const { error } = await supabase.storage
             .from('documents')
             .upload(filePath, file);

@@ -105,7 +105,7 @@ const App: React.FC = () => {
           .from('app_settings')
           .select('value')
           .eq('id', 'gemini_api_key')
-          .single();
+          .maybeSingle();
 
         if (appData?.value) {
           setApiKey(appData.value);
@@ -135,10 +135,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const processPendingJobs = async () => {
       // Prevent concurrent processing
-      if (isProcessingAudio) {
-        console.log('[App] Already processing a job, skipping...');
-        return;
-      }
+      if (isProcessingAudio) return;
 
       const pendingJob = audioJobs.find(j => j.status === AppStatus.IDLE);
       if (!pendingJob) return;
@@ -328,17 +325,13 @@ const App: React.FC = () => {
 
   const handleClear = () => {
     if (mode === AppMode.AUDIO) {
-      // In multi-audio, clear might mean clear the whole queue or just the active one?
-      // Let's implement active job removal
-      if (activeAudioJobId) {
-        setAudioJobs(prev => prev.filter(j => j.id !== activeAudioJobId));
-        setActiveAudioJobId(null);
-      }
-    } else {
-      if (activePressJobId) {
-        setPressJobs(prev => prev.filter(j => j.id !== activePressJobId));
-        setActivePressJobId(null);
-      }
+      setAudioJobs([]);
+      setActiveAudioJobId(null);
+      setIsProcessingAudio(false);
+    } else if (mode === AppMode.PRESS_RELEASE) {
+      setPressJobs([]);
+      setActivePressJobId(null);
+      setIsProcessingPress(false);
       setUserAngle('');
     }
   };
@@ -550,7 +543,11 @@ const App: React.FC = () => {
                 jobs={audioJobs}
                 activeJobId={activeAudioJobId}
                 onJobClick={setActiveAudioJobId}
-                onClearQueue={() => setAudioJobs([])}
+                onClearQueue={() => {
+                  setAudioJobs([]);
+                  setActiveAudioJobId(null);
+                  setIsProcessingAudio(false);
+                }}
                 onAddMore={() => (document.querySelector('input[name="file-input-AUDIO"]') as HTMLInputElement || document.querySelector('input[type="file"]'))?.click()}
               />
             )}
@@ -559,7 +556,11 @@ const App: React.FC = () => {
                 jobs={pressJobs}
                 activeJobId={activePressJobId}
                 onJobClick={setActivePressJobId}
-                onClearQueue={() => setPressJobs([])}
+                onClearQueue={() => {
+                  setPressJobs([]);
+                  setActivePressJobId(null);
+                  setIsProcessingPress(false);
+                }}
                 onAddMore={() => (document.querySelector('input[name="file-input-PRESS_RELEASE"]') as HTMLInputElement || document.querySelector('input[type="file"]'))?.click()}
               />
             )}
