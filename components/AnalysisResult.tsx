@@ -345,7 +345,10 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
                 {/* Automatic Fact Checks */}
                 {result.factChecks && result.factChecks.length > 0 && (
                   <div className="space-y-6">
-                    <h4 className="text-[10px] font-black text-servimedia-pink uppercase tracking-[0.4em] mb-4">Verificaciones Automáticas</h4>
+                    <div>
+                      <h4 className="text-[10px] font-black text-servimedia-pink uppercase tracking-[0.4em] mb-2">Verificaciones Automáticas</h4>
+                      <p className="text-xs text-servimedia-gray/40 italic">⚠️ Estas verificaciones se basan en la base de datos de Gemini, no en búsquedas en tiempo real</p>
+                    </div>
                     {result.factChecks.map((c, i) => (
                       <div key={i} className="p-8 border-2 border-servimedia-border rounded-3xl hover:border-servimedia-pink/20 transition-all space-y-4 shadow-sm">
                         <div className="flex items-center gap-3">
