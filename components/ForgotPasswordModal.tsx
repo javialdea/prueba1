@@ -20,7 +20,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
 
         try {
             const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                redirectTo: `${window.location.origin}/api/auth/confirm`,
+                redirectTo: 'https://prueba1-brown.vercel.app',
             });
 
             if (error) throw error;

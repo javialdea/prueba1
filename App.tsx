@@ -58,11 +58,24 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Hash-based routing for password reset
+  // Detect password recovery from Supabase ConfirmationURL redirect
+  // After clicking the magic link, Supabase redirects with #access_token=...&type=recovery
   useEffect(() => {
-    const handleHashChange = () => setCurrentRoute(window.location.hash);
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    const checkForRecovery = () => {
+      const hash = window.location.hash;
+
+      // Check for Supabase recovery redirect (type=recovery in hash params)
+      if (hash.includes('type=recovery')) {
+        setCurrentRoute('#/reset-password');
+        return;
+      }
+
+      setCurrentRoute(hash);
+    };
+
+    checkForRecovery();
+    window.addEventListener('hashchange', checkForRecovery);
+    return () => window.removeEventListener('hashchange', checkForRecovery);
   }, []);
   const [apiKey, setApiKey] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
