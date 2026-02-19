@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronRight, Loader2, Clock, Mic2 } from 'lucide-react';
 import { AppStatus, TranscriptionJob } from '../types';
 
@@ -10,6 +10,30 @@ interface AudioQueueProps {
     onClearQueue: () => void;
     onAddMore: () => void;
 }
+
+// Per-job timer component
+const ProcessingTimer: React.FC<{ isActive: boolean }> = ({ isActive }) => {
+    const [seconds, setSeconds] = useState(0);
+
+    useEffect(() => {
+        if (!isActive) { setSeconds(0); return; }
+        setSeconds(0);
+        const interval = setInterval(() => setSeconds(s => s + 1), 1000);
+        return () => clearInterval(interval);
+    }, [isActive]);
+
+    if (!isActive) return null;
+
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    const display = m > 0 ? `${m}m ${s}s` : `${s}s`;
+
+    return (
+        <span className="text-[9px] font-black uppercase tracking-widest text-servimedia-pink animate-pulse">
+            {display}
+        </span>
+    );
+};
 
 export const AudioQueue: React.FC<AudioQueueProps> = ({
     jobs,
@@ -45,10 +69,15 @@ export const AudioQueue: React.FC<AudioQueueProps> = ({
                             <div className={`p-2 rounded-lg ${job.status === AppStatus.COMPLETED ? 'bg-green-500/10 text-green-500' : job.status === AppStatus.ERROR ? 'bg-red-500/10 text-red-500' : 'bg-servimedia-pink/10 text-servimedia-pink'}`}>
                                 {job.status === AppStatus.COMPLETED ? <ChevronRight className="w-4 h-4" /> : job.status === AppStatus.PROCESSING ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />}
                             </div>
-                            <span className="text-[9px] font-black uppercase tracking-widest text-servimedia-gray/20">{job.timestamp}</span>
+                            <ProcessingTimer isActive={job.status === AppStatus.PROCESSING} />
+                            {job.status !== AppStatus.PROCESSING && (
+                                <span className="text-[9px] font-black uppercase tracking-widest text-servimedia-gray/20">{job.timestamp}</span>
+                            )}
                         </div>
                         <p className="font-bold text-servimedia-gray text-sm truncate mb-1 group-hover:text-servimedia-pink transition-colors">{job.file.name}</p>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-servimedia-gray/30">{job.status === AppStatus.COMPLETED ? 'Completado' : job.status === AppStatus.PROCESSING ? 'Procesando...' : job.status === AppStatus.ERROR ? 'Error' : 'En cola'}</p>
+                        <p className={`text-[10px] font-black uppercase tracking-widest ${job.status === AppStatus.ERROR ? 'text-red-400' : 'text-servimedia-gray/30'}`}>
+                            {job.status === AppStatus.COMPLETED ? '✓ Completado' : job.status === AppStatus.PROCESSING ? 'Analizando con IA...' : job.status === AppStatus.ERROR ? 'Error — ver resultado' : 'En cola'}
+                        </p>
                     </div>
                 ))}
                 <div className="flex items-center justify-center border-2 border-dashed border-servimedia-border rounded-2xl p-5 hover:border-servimedia-pink/20 transition-all cursor-pointer group" onClick={onAddMore}>

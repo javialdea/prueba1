@@ -48,9 +48,41 @@ async function retryOperation<T>(operation: () => Promise<T>, retries = 3, delay
       await new Promise(resolve => setTimeout(resolve, delay));
       return retryOperation(operation, retries - 1, delay * 2);
     }
-    throw error;
+    // Translate error to Spanish before throwing
+    throw new Error(translateGeminiError(error));
   }
 }
+
+// Translates Gemini API errors to friendly Spanish messages
+function translateGeminiError(error: any): string {
+  const msg = (error.message || '').toLowerCase();
+  if (msg.includes('quota') || msg.includes('resource_exhausted') || msg.includes('429')) {
+    return 'Se ha agotado la cuota de la API de Gemini. Espera unos minutos e inténtalo de nuevo, o contacta con el administrador.';
+  }
+  if (msg.includes('api key') || msg.includes('api_key') || msg.includes('401') || msg.includes('403') || msg.includes('permission')) {
+    return 'La clave de API de Gemini no es válida o no tiene permisos. Contacta con el administrador.';
+  }
+  if (msg.includes('500') || msg.includes('internal')) {
+    return 'Error interno del servidor de Gemini. Se ha reintentado automáticamente. Por favor, inténtalo de nuevo.';
+  }
+  if (msg.includes('503') || msg.includes('unavailable') || msg.includes('overloaded')) {
+    return 'El servicio de Gemini está temporalmente saturado. Inténtalo de nuevo en unos minutos.';
+  }
+  if (msg.includes('timeout') || msg.includes('deadline')) {
+    return 'La operación ha tardado demasiado. El archivo puede ser demasiado largo. Inténtalo con un fragmento más corto.';
+  }
+  if (msg.includes('file too large') || msg.includes('too large')) {
+    return 'El archivo es demasiado grande para procesarlo. Utiliza un archivo de menos de 100MB.';
+  }
+  if (msg.includes('json') || msg.includes('parse')) {
+    return 'Error al procesar la respuesta de la IA. Inténtalo de nuevo.';
+  }
+  if (!getApiKey()) {
+    return 'No hay una clave de API configurada. Contacta con el administrador para configurar la API de Gemini.';
+  }
+  return `Error al procesar con Gemini: ${error.message || 'Error desconocido'}. Inténtalo de nuevo.`;
+}
+
 
 // --- AUDIO/VIDEO PROCESSING ---
 const processAudio = async (base64Audio: string, mimeType: string): Promise<AnalysisResult> => {
