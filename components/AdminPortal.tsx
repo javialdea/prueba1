@@ -155,8 +155,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
     );
 
     return (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-            <div className="bg-white w-full max-w-5xl rounded-[2.5rem] shadow-2xl overflow-hidden border border-servimedia-border animate-in zoom-in-95 duration-300 h-[85vh] flex flex-col">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 md:p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="bg-white w-full max-w-5xl rounded-[2rem] md:rounded-[2.5rem] shadow-2xl overflow-hidden border border-servimedia-border animate-in zoom-in-95 duration-300 h-[95vh] md:h-[85vh] flex flex-col">
 
                 {/* Header */}
                 <div className="p-8 border-b border-servimedia-light flex items-center justify-between bg-gradient-to-r from-servimedia-gray to-servimedia-gray/80 text-white">
@@ -175,8 +175,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                 </div>
 
                 {/* Tabs & Search */}
-                <div className="bg-servimedia-light/50 px-8 py-4 border-b border-servimedia-border flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex gap-2">
+                <div className="bg-servimedia-light/50 px-4 md:px-8 py-4 border-b border-servimedia-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex gap-2 overflow-x-auto pb-1 w-full sm:w-auto">
                         {[
                             { id: 'users', label: 'Usuarios', icon: Users },
                             { id: 'stats', label: 'Estadísticas', icon: BarChart3 },
@@ -211,7 +211,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-8">
+                <div className="flex-1 overflow-y-auto p-4 md:p-8">
                     {message && (
                         <div className={`mb-6 p-4 rounded-2xl border flex items-center gap-3 animate-in slide-in-from-top-4 duration-300 ${message.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'
                             }`}>
@@ -226,7 +226,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                             <p className="text-[10px] font-black uppercase tracking-[0.3em]">Cargando datos...</p>
                         </div>
                     ) : activeTab === 'users' ? (
-                        <div className="bg-white border border-servimedia-border rounded-3xl overflow-hidden shadow-sm">
+                        <div className="bg-white border border-servimedia-border rounded-2xl overflow-hidden shadow-sm overflow-x-auto">
                             <table className="w-full text-left">
                                 <thead className="bg-servimedia-light/50 border-b border-servimedia-border">
                                     <tr>

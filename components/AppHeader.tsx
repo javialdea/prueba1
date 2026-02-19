@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { Mic2, Newspaper, PenTool, History as HistoryIcon, User, LogIn, LogOut, Shield } from 'lucide-react';
+import React, { useState } from 'react';
+import { Mic2, Newspaper, PenTool, History as HistoryIcon, User, LogIn, Shield, Menu, X as XIcon } from 'lucide-react';
 import { AppMode } from '../types';
 
 interface RobotLogoProps {
@@ -55,23 +55,32 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     userEmail,
     isAdmin = false
 }) => {
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+    const handleModeChange = (newMode: AppMode) => {
+        onModeChange(newMode);
+        setIsMobileMenuOpen(false);
+    };
+
     return (
         <nav className="bg-white border-b border-servimedia-border sticky top-0 z-40 shadow-sm">
             <div className="max-w-7xl mx-auto px-4 lg:px-8">
-                <div className="flex justify-between h-24 items-center">
-                    <div className="flex items-center gap-5 cursor-pointer group" onClick={onLogoClick}>
-                        <RobotLogo className="w-16 h-16 transform transition-transform group-hover:scale-110 duration-500" />
+                <div className="flex justify-between h-20 md:h-24 items-center">
+                    {/* Logo */}
+                    <div className="flex items-center gap-3 cursor-pointer group" onClick={onLogoClick}>
+                        <RobotLogo className="w-12 h-12 md:w-16 md:h-16 transform transition-transform group-hover:scale-110 duration-500" />
                         <div className="flex flex-col items-start">
-                            <div className="flex items-center text-4xl font-black tracking-tighter leading-none">
+                            <div className="flex items-center text-2xl md:text-4xl font-black tracking-tighter leading-none">
                                 <span className="text-servimedia-pink">servimed-</span>
                                 <span className="text-servimedia-orange inline-block animate-pulse ml-0.5">IA</span>
                             </div>
-                            <span className="text-[9px] font-black text-servimedia-gray/40 uppercase tracking-[0.25em] ml-0.5 mt-2">
+                            <span className="text-[8px] md:text-[9px] font-black text-servimedia-gray/40 uppercase tracking-[0.25em] ml-0.5 mt-1">
                                 Powered by Javier Aldea & Gemini
                             </span>
                         </div>
                     </div>
 
+                    {/* Desktop Nav */}
                     <div className="hidden md:flex gap-2 h-full">
                         <button onClick={() => onModeChange(AppMode.AUDIO)} className={`flex items-center gap-2 px-4 h-full border-b-4 transition-all font-black text-[10px] uppercase tracking-[0.1em] ${mode === AppMode.AUDIO ? 'border-servimedia-pink text-servimedia-pink bg-servimedia-pink/5' : 'border-transparent text-servimedia-gray hover:text-servimedia-pink'}`}>
                             <Mic2 className="w-3.5 h-3.5" /> Audio a Texto
@@ -84,12 +93,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                         </button>
                     </div>
 
-                    <div className="flex items-center gap-6">
+                    {/* Desktop Right */}
+                    <div className="hidden md:flex items-center gap-6">
                         <button onClick={onHistoryOpen} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40 hover:text-servimedia-pink transition-colors">
                             <HistoryIcon className="w-5 h-5" />
                             <span className="hidden lg:inline">Archivo</span>
                         </button>
-
                         {isAdmin && (
                             <button onClick={onCostEstimatorOpen} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40 hover:text-servimedia-pink transition-colors">
                                 <Shield className="w-5 h-5" />
@@ -102,26 +111,73 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                                     <User className="w-4 h-4 text-servimedia-pink" />
                                     <span className="text-[10px] font-black uppercase tracking-widest text-servimedia-gray/60">{userEmail.split('@')[0]}</span>
                                 </div>
-                                <button
-                                    onClick={onLogout}
-                                    className="p-3 hover:bg-red-50 text-servimedia-gray/20 hover:text-red-500 rounded-full transition-all group"
-                                    title="Cerrar Sesión"
-                                >
-                                    <LogIn className="w-5 h-5 rotate-180 group-hover:scale-110 transition-transform" />
+                                <button onClick={onLogout} className="p-3 hover:bg-red-50 text-servimedia-gray/20 hover:text-red-500 rounded-full transition-all" title="Cerrar Sesión">
+                                    <LogIn className="w-5 h-5 rotate-180" />
                                 </button>
                             </div>
                         ) : (
-                            <button
-                                onClick={onAuthOpen}
-                                className="flex items-center gap-3 bg-servimedia-gray px-6 py-3 rounded-full text-white hover:bg-servimedia-pink transition-all shadow-lg shadow-servimedia-gray/10 group active:scale-95"
-                            >
+                            <button onClick={onAuthOpen} className="flex items-center gap-3 bg-servimedia-gray px-6 py-3 rounded-full text-white hover:bg-servimedia-pink transition-all shadow-lg group active:scale-95">
                                 <LogIn className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                                 <span className="text-[10px] font-black uppercase tracking-[0.2em]">Acceso Cloud</span>
                             </button>
                         )}
                     </div>
+
+                    {/* Mobile Right: user + hamburger */}
+                    <div className="flex md:hidden items-center gap-3">
+                        {userEmail ? (
+                            <div className="flex items-center gap-2 bg-servimedia-light px-3 py-1.5 rounded-full border border-servimedia-border">
+                                <User className="w-3.5 h-3.5 text-servimedia-pink" />
+                                <span className="text-[9px] font-black uppercase tracking-widest text-servimedia-gray/60">{userEmail.split('@')[0]}</span>
+                            </div>
+                        ) : (
+                            <button onClick={onAuthOpen} className="flex items-center gap-2 bg-servimedia-gray px-4 py-2 rounded-full text-white hover:bg-servimedia-pink transition-all text-[9px] font-black uppercase tracking-widest">
+                                <LogIn className="w-3.5 h-3.5" /> Acceso
+                            </button>
+                        )}
+                        <button
+                            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                            className="p-2 rounded-xl hover:bg-servimedia-light transition-colors text-servimedia-gray"
+                        >
+                            {isMobileMenuOpen ? <XIcon className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+                        </button>
+                    </div>
                 </div>
             </div>
+
+            {/* Mobile Dropdown Menu */}
+            {isMobileMenuOpen && (
+                <div className="md:hidden border-t border-servimedia-border bg-white animate-in slide-in-from-top-2 duration-200">
+                    <div className="px-4 py-4 space-y-2">
+                        <p className="text-[9px] font-black text-servimedia-gray/30 uppercase tracking-[0.3em] px-2 mb-3">Herramientas</p>
+                        <button onClick={() => handleModeChange(AppMode.AUDIO)} className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl text-left font-black text-xs uppercase tracking-wider transition-all ${mode === AppMode.AUDIO ? 'bg-servimedia-pink/10 text-servimedia-pink' : 'text-servimedia-gray hover:bg-servimedia-light'}`}>
+                            <Mic2 className="w-5 h-5 flex-shrink-0" /> Audio a Texto
+                        </button>
+                        <button onClick={() => handleModeChange(AppMode.PRESS_RELEASE)} className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl text-left font-black text-xs uppercase tracking-wider transition-all ${mode === AppMode.PRESS_RELEASE ? 'bg-servimedia-orange/10 text-servimedia-orange' : 'text-servimedia-gray hover:bg-servimedia-light'}`}>
+                            <Newspaper className="w-5 h-5 flex-shrink-0" /> Notas de Prensa
+                        </button>
+                        <button onClick={() => handleModeChange(AppMode.WRITING_ASSISTANT)} className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl text-left font-black text-xs uppercase tracking-wider transition-all ${mode === AppMode.WRITING_ASSISTANT ? 'bg-servimedia-orange/10 text-servimedia-orange' : 'text-servimedia-gray hover:bg-servimedia-light'}`}>
+                            <PenTool className="w-5 h-5 flex-shrink-0" /> Asistente Redacción
+                        </button>
+
+                        <div className="border-t border-servimedia-border pt-3 mt-3 space-y-2">
+                            <button onClick={() => { onHistoryOpen(); setIsMobileMenuOpen(false); }} className="w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-left font-black text-xs uppercase tracking-wider text-servimedia-gray/50 hover:bg-servimedia-light transition-all">
+                                <HistoryIcon className="w-5 h-5 flex-shrink-0" /> Archivo
+                            </button>
+                            {isAdmin && (
+                                <button onClick={() => { onCostEstimatorOpen(); setIsMobileMenuOpen(false); }} className="w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-left font-black text-xs uppercase tracking-wider text-servimedia-gray/50 hover:bg-servimedia-light transition-all">
+                                    <Shield className="w-5 h-5 flex-shrink-0" /> Panel Admin
+                                </button>
+                            )}
+                            {userEmail && (
+                                <button onClick={() => { onLogout(); setIsMobileMenuOpen(false); }} className="w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-left font-black text-xs uppercase tracking-wider text-red-400 hover:bg-red-50 transition-all">
+                                    <LogIn className="w-5 h-5 rotate-180 flex-shrink-0" /> Cerrar sesión
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </nav>
     );
 };

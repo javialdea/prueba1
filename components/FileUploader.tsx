@@ -25,6 +25,18 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected, onCl
     // Clear any previous errors
     setError(null);
 
+    // Validate file sizes (100MB max)
+    const MAX_SIZE_MB = 100;
+    const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+    const oversizedFiles = fileArray.filter(f => f.size > MAX_SIZE_BYTES);
+    if (oversizedFiles.length > 0) {
+      const names = oversizedFiles.map(f => `${f.name} (${(f.size / 1024 / 1024).toFixed(0)}MB)`).join(', ');
+      const errorMsg = `El archivo es demasiado grande (máximo ${MAX_SIZE_MB}MB): ${names}`;
+      setError(errorMsg);
+      if (onError) onError(errorMsg);
+      return;
+    }
+
     // For modes that are NOT queue-based, we'd take only the first.
     // But now both AUDIO and PRESS_RELEASE support queues.
     // Keeping this block only for modes that might be added later and are single-file.
