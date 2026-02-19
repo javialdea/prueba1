@@ -199,12 +199,14 @@ export const calculateMonthlyProjection = (
     };
 };
 
-// Format currency
-export const formatCurrency = (amount: number): string => {
+// Format currency (converted from USD to EUR)
+const USD_TO_EUR = 0.92; // Approximate conversion rate
+
+export const formatCurrency = (amountUSD: number): string => {
     return new Intl.NumberFormat('es-ES', {
         style: 'currency',
-        currency: 'USD',
+        currency: 'EUR',
         minimumFractionDigits: 2,
         maximumFractionDigits: 4,
-    }).format(amount);
+    }).format(amountUSD * USD_TO_EUR);
 };
