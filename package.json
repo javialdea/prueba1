@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "deploy": "echo ⛔ ERROR: No uses npm run deploy. Vercel despliega automaticamente al hacer git push origin main. Si lo haces igualas las ramas y rompes el despliegue. && exit 1"
   },
   "dependencies": {
     "@google/genai": "^1.39.0",
