@@ -2,9 +2,13 @@ import React, { useState, useEffect } from 'react';
 import {
     X, Users, BarChart3, Settings,
     Shield, ShieldAlert, ToggleLeft, ToggleRight,
-    Loader2, CheckCircle, Search, Save, KeyRound, Sparkles
+    Loader2, CheckCircle, Search, Save, KeyRound, Sparkles, DollarSign, TrendingUp, Zap, FileAudio, FileText, MessageSquare
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
+import {
+    calculateAudioCost, calculatePressReleaseCost, calculateChatCost,
+    calculateMonthlyProjection, formatCurrency, GEMINI_3_PRO_PRICING, GEMINI_3_FLASH_PRICING
+} from '../utils/costCalculator';
 
 interface Profile {
     id: string;
@@ -19,8 +23,19 @@ interface AdminPortalProps {
     onClose: () => void;
 }
 
+interface CostData {
+    totalAudioJobs: number;
+    totalPressJobs: number;
+    estimatedTotalCost: number;
+    audioCostTotal: number;
+    pressCostTotal: number;
+    chatCostTotal: number;
+    avgAudioMinutes: number;
+    avgDocSizeKB: number;
+}
+
 export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => {
-    const [activeTab, setActiveTab] = useState<'users' | 'stats' | 'config'>('users');
+    const [activeTab, setActiveTab] = useState<'users' | 'stats' | 'config' | 'costs'>('users');
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -29,6 +44,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
     const [geminiKey, setGeminiKey] = useState('');
     const [savingKey, setSavingKey] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [costs, setCosts] = useState<CostData | null>(null);
+    const [monthlyAudio, setMonthlyAudio] = useState(10);
+    const [monthlyPress, setMonthlyPress] = useState(5);
 
     useEffect(() => {
         if (isOpen) {
@@ -92,6 +110,40 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                 totalAudios: audioCount ?? (totalJobCount ?? 0),
                 totalPressReleases: pressCount ?? 0
             });
+
+            // Fetch actual job data for cost calculation
+            const { data: jobData } = await supabase
+                .from('audio_jobs')
+                .select('job_type, file_name, result')
+                .order('created_at', { ascending: false })
+                .limit(200);
+
+            if (jobData && jobData.length > 0) {
+                const audioJobs = jobData.filter(j => j.job_type === 'audio');
+                const pressJobs = jobData.filter(j => j.job_type === 'press_release');
+                // Estimate audio minutes from transcription length (rough: 150 words/min, 5 chars/word)
+                const estimateMinutes = (job: any) => {
+                    const transcription = job.result?.transcription || '';
+                    return Math.max(1, transcription.length / (150 * 5));
+                };
+                const avgAudioMin = audioJobs.length > 0
+                    ? audioJobs.reduce((sum, j) => sum + estimateMinutes(j), 0) / audioJobs.length
+                    : 5;
+                const audioCostTotal = audioJobs.reduce((sum, j) => sum + calculateAudioCost(estimateMinutes(j), 'paid').totalCost, 0);
+                const pressCostTotal = pressJobs.reduce((sum, _j) => sum + calculatePressReleaseCost(50, 'paid').totalCost, 0);
+                // Estimate chat messages per audio job (average 3 chat interactions)
+                const chatCostTotal = jobData.length * calculateChatCost(100, 3, 'paid').totalCost;
+                setCosts({
+                    totalAudioJobs: audioJobs.length,
+                    totalPressJobs: pressJobs.length,
+                    estimatedTotalCost: audioCostTotal + pressCostTotal + chatCostTotal,
+                    audioCostTotal,
+                    pressCostTotal,
+                    chatCostTotal,
+                    avgAudioMinutes: Math.round(avgAudioMin * 10) / 10,
+                    avgDocSizeKB: 50,
+                });
+            }
 
         } catch (err: any) {
             console.error('Error fetching admin data:', err);
@@ -180,6 +232,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                         {[
                             { id: 'users', label: 'Usuarios', icon: Users },
                             { id: 'stats', label: 'Estadísticas', icon: BarChart3 },
+                            { id: 'costs', label: 'Costes API', icon: DollarSign },
                             { id: 'config', label: 'Configuración', icon: Settings },
                         ].map(tab => (
                             <button
@@ -282,6 +335,110 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    ) : activeTab === 'costs' ? (
+                        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                            {/* Total Cost Banner */}
+                            <div className="bg-gradient-to-br from-servimedia-gray to-black rounded-3xl p-8 text-white relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-64 h-64 bg-servimedia-pink/10 blur-3xl rounded-full -translate-y-1/2 translate-x-1/4" />
+                                <DollarSign className="w-10 h-10 mb-4 opacity-30" />
+                                <p className="text-[10px] font-black uppercase tracking-[0.4em] opacity-60 mb-2">Gasto Estimado Total (histórico)</p>
+                                <h2 className="text-5xl font-black tracking-tighter mb-1">
+                                    {costs ? formatCurrency(costs.estimatedTotalCost) : '–'}
+                                </h2>
+                                <p className="text-[10px] opacity-40 mt-2">Basado en {(costs?.totalAudioJobs || 0) + (costs?.totalPressJobs || 0)} trabajos completados • Cálculo estimado</p>
+                            </div>
+
+                            {/* Breakdown */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div className="bg-servimedia-pink/5 border border-servimedia-pink/20 rounded-2xl p-6">
+                                    <FileAudio className="w-6 h-6 text-servimedia-pink mb-3 opacity-60" />
+                                    <p className="text-[9px] font-black uppercase tracking-[0.3em] text-servimedia-gray/40 mb-1">Transcripciones Audio</p>
+                                    <p className="text-2xl font-black text-servimedia-gray">{costs ? formatCurrency(costs.audioCostTotal) : '–'}</p>
+                                    <p className="text-[9px] text-servimedia-gray/30 mt-1">{costs?.totalAudioJobs || 0} trabajos · ~{costs?.avgAudioMinutes || 0} min/media</p>
+                                </div>
+                                <div className="bg-servimedia-orange/5 border border-servimedia-orange/20 rounded-2xl p-6">
+                                    <FileText className="w-6 h-6 text-servimedia-orange mb-3 opacity-60" />
+                                    <p className="text-[9px] font-black uppercase tracking-[0.3em] text-servimedia-gray/40 mb-1">Notas de Prensa</p>
+                                    <p className="text-2xl font-black text-servimedia-gray">{costs ? formatCurrency(costs.pressCostTotal) : '–'}</p>
+                                    <p className="text-[9px] text-servimedia-gray/30 mt-1">{costs?.totalPressJobs || 0} trabajos</p>
+                                </div>
+                                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6">
+                                    <MessageSquare className="w-6 h-6 text-blue-400 mb-3 opacity-60" />
+                                    <p className="text-[9px] font-black uppercase tracking-[0.3em] text-servimedia-gray/40 mb-1">Chat & Verificaciones</p>
+                                    <p className="text-2xl font-black text-servimedia-gray">{costs ? formatCurrency(costs.chatCostTotal) : '–'}</p>
+                                    <p className="text-[9px] text-servimedia-gray/30 mt-1">~3 chats por trabajo (estimado)</p>
+                                </div>
+                            </div>
+
+                            {/* Monthly Projection */}
+                            <div className="bg-servimedia-light/50 border border-servimedia-border rounded-3xl p-8">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <TrendingUp className="w-5 h-5 text-servimedia-pink" />
+                                    <h3 className="text-sm font-black uppercase tracking-wider text-servimedia-gray">Proyección Mensual</h3>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40 block mb-2">
+                                            Audios al mes: <span className="text-servimedia-pink">{monthlyAudio}</span>
+                                        </label>
+                                        <input type="range" min={0} max={100} value={monthlyAudio} onChange={e => setMonthlyAudio(Number(e.target.value))}
+                                            className="w-full accent-servimedia-pink" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40 block mb-2">
+                                            Notas de prensa: <span className="text-servimedia-orange">{monthlyPress}</span>
+                                        </label>
+                                        <input type="range" min={0} max={50} value={monthlyPress} onChange={e => setMonthlyPress(Number(e.target.value))}
+                                            className="w-full accent-servimedia-orange" />
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-2xl p-6 border border-servimedia-border flex items-center justify-between">
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40">Coste mensual estimado</p>
+                                        <p className="text-4xl font-black text-servimedia-gray mt-1">
+                                            {formatCurrency(calculateMonthlyProjection(
+                                                { audioTranscriptions: monthlyAudio, pressReleases: monthlyPress, chatMessages: monthlyAudio * 3, madridSummaries: 0 },
+                                                'paid', costs?.avgAudioMinutes || 5, 50
+                                            ).totalCost)}
+                                        </p>
+                                    </div>
+                                    <Zap className="w-12 h-12 text-servimedia-gray/5" />
+                                </div>
+                            </div>
+
+                            {/* Pricing reference */}
+                            <div className="bg-white border border-servimedia-border rounded-2xl overflow-hidden shadow-sm">
+                                <div className="px-6 py-4 border-b border-servimedia-border bg-servimedia-light/30">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40">Tarifas Gemini (referencia oficial)</p>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-xs">
+                                        <thead className="bg-servimedia-light/30">
+                                            <tr>
+                                                <th className="px-4 py-3 font-black uppercase tracking-widest text-[9px] text-servimedia-gray/40">Modelo</th>
+                                                <th className="px-4 py-3 font-black uppercase tracking-widest text-[9px] text-servimedia-gray/40">Input (1M tokens)</th>
+                                                <th className="px-4 py-3 font-black uppercase tracking-widest text-[9px] text-servimedia-gray/40">Audio (1M tokens)</th>
+                                                <th className="px-4 py-3 font-black uppercase tracking-widest text-[9px] text-servimedia-gray/40">Output (1M tokens)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-servimedia-border">
+                                            <tr className="hover:bg-servimedia-light/20 transition-colors">
+                                                <td className="px-4 py-4 font-black text-servimedia-gray">Gemini 2.5 Pro</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_3_PRO_PRICING.paid.inputPrice)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/40">—</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_3_PRO_PRICING.paid.outputPrice)}</td>
+                                            </tr>
+                                            <tr className="hover:bg-servimedia-light/20 transition-colors">
+                                                <td className="px-4 py-4 font-black text-servimedia-gray">Gemini 2.5 Flash</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_3_FLASH_PRICING.paid.inputPrice)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_3_FLASH_PRICING.paid.audioInputPrice || 0)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_3_FLASH_PRICING.paid.outputPrice)}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     ) : activeTab === 'stats' ? (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
