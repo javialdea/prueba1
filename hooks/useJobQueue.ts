@@ -67,6 +67,34 @@ export const useJobQueue = <T extends BaseJob>(
         processQueue();
     }, [jobs, isProcessing, session, jobType, onJobCompleted]);
 
+    // When the user returns to Chrome after switching apps, resume any interrupted jobs
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState !== 'visible') return;
+
+            setJobs(prev => {
+                const hasInterrupted = prev.some(
+                    j => j.status === AppStatus.PROCESSING || j.status === AppStatus.ERROR
+                );
+                if (!hasInterrupted) return prev;
+
+                console.log('[useJobQueue] App returned to foreground — resuming interrupted jobs.');
+                // Reset stuck PROCESSING and ERROR jobs back to IDLE for retry
+                return prev.map(j =>
+                    (j.status === AppStatus.PROCESSING || j.status === AppStatus.ERROR)
+                        ? { ...j, status: AppStatus.IDLE }
+                        : j
+                ) as T[];
+            });
+
+            // Allow the queue to pick up again
+            setIsProcessing(false);
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, []);
+
     const addJob = (job: T) => {
         setJobs(prev => [...prev, job]);
         if (!activeJobId) setActiveJobId(job.id);
