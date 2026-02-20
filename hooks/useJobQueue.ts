@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase';
 import { Session } from '@supabase/supabase-js';
 import { AppStatus, BaseJob, AppMode } from '../types';
 import { geminiService } from '../services/geminiService';
+import { useWakeLock } from './useWakeLock';
 
 export const useJobQueue = <T extends BaseJob>(
     jobType: 'audio' | 'press_release',
@@ -12,6 +13,9 @@ export const useJobQueue = <T extends BaseJob>(
     const [jobs, setJobs] = useState<T[]>([]);
     const [activeJobId, setActiveJobId] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+
+    // Keep screen on while processing so mobile doesn't interrupt the request
+    useWakeLock(isProcessing);
 
     // Auto-process queue
     useEffect(() => {
