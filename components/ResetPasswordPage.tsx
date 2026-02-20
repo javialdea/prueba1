@@ -51,6 +51,8 @@ export const ResetPasswordPage: React.FC = () => {
             if (error) throw error;
 
             setSuccess(true);
+            // Sign out the recovery session so the user logs in fresh
+            await supabase.auth.signOut();
             setTimeout(() => {
                 window.location.href = '/';
             }, 2000);

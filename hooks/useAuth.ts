@@ -18,7 +18,9 @@ export const useAuth = () => {
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             if (event === 'PASSWORD_RECOVERY') {
-                // Don't set session on password recovery — redirect to reset form instead
+                // Set the session so supabase.auth.updateUser() works in ResetPasswordPage
+                setSession(session);
+                // Redirect to the reset form
                 window.location.hash = '#/reset-password';
                 return;
             }
