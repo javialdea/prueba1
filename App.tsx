@@ -56,7 +56,7 @@ const App: React.FC = () => {
   // Authentication and routing effect
   useEffect(() => {
     const hash = window.location.hash;
-    if (hash.includes('type=recovery')) {
+    if (hash.includes('type=recovery') || hash.startsWith('#/reset-password')) {
       setCurrentRoute('#/reset-password');
     } else {
       setCurrentRoute(hash);
@@ -64,7 +64,7 @@ const App: React.FC = () => {
 
     const handleHashChange = () => {
       const newHash = window.location.hash;
-      if (newHash.includes('type=recovery')) {
+      if (newHash.includes('type=recovery') || newHash.startsWith('#/reset-password')) {
         setCurrentRoute('#/reset-password');
       } else {
         setCurrentRoute(newHash);

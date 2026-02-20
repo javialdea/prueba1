@@ -17,6 +17,11 @@ export const useAuth = () => {
         });
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'PASSWORD_RECOVERY') {
+                // Don't set session on password recovery — redirect to reset form instead
+                window.location.hash = '#/reset-password';
+                return;
+            }
             setSession(session);
             if (session) setIsAuthOpen(false);
         });
