@@ -4,24 +4,49 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, PressReleaseResult, HistoryItem, AppMode } from "../types";
 import mammoth from "mammoth";
+import { supabase } from "./supabase";
 
-// Helper to get API key from storage or env
-const getApiKey = (): string => {
+// In-memory cache: avoids hitting /api/gemini-key on every call
+let cachedKey: string | null = null;
+let cacheExpiry = 0;
+
+// Fetches the Gemini API key from the serverless proxy, authenticated via Supabase JWT.
+// Falls back to localStorage for local development without the Vercel function available.
+const getApiKey = async (): Promise<string> => {
+  const now = Date.now();
+
+  // Return cached key if still valid (5 minutes)
+  if (cachedKey && now < cacheExpiry) return cachedKey;
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (session?.access_token) {
+      const response = await fetch('/api/gemini-key', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+
+      if (response.ok) {
+        const { key } = await response.json();
+        cachedKey = key;
+        cacheExpiry = now + 5 * 60 * 1000; // cache for 5 minutes
+        return key;
+      }
+    }
+  } catch (err) {
+    console.warn('[geminiService] Could not fetch key from server, using localStorage fallback:', err);
+  }
+
+  // Local dev fallback: key stored in localStorage by the admin panel
   const storedKey = localStorage.getItem('GEMINI_API_KEY');
   if (storedKey) return storedKey;
-
-  // Fallback to Vite env var (set in Vercel/Netlify)
-  const envKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (envKey && envKey !== 'PLACEHOLDER_API_KEY') {
-    return envKey;
-  }
 
   return ''; // Return empty instead of throwing to avoid blank page
 };
 
-// Helper to get AI instance
-const getAI = () => {
-  return new GoogleGenAI({ apiKey: getApiKey() });
+// Helper to get AI instance (async now because getApiKey is async)
+const getAI = async () => {
+  return new GoogleGenAI({ apiKey: await getApiKey() });
 };
 
 // --- UTILS ---
@@ -77,9 +102,6 @@ function translateGeminiError(error: any): string {
   if (msg.includes('json') || msg.includes('parse')) {
     return 'Error al procesar la respuesta de la IA. Inténtalo de nuevo.';
   }
-  if (!getApiKey()) {
-    return 'No hay una clave de API configurada. Contacta con el administrador para configurar la API de Gemini.';
-  }
   return `Error al procesar con Gemini: ${error.message || 'Error desconocido'}. Inténtalo de nuevo.`;
 }
 
@@ -89,7 +111,7 @@ const processAudio = async (base64Audio: string, mimeType: string): Promise<Anal
   const normalizedMimeType = normalizeMimeType(mimeType);
 
   const operation = async () => {
-    const response = await getAI().models.generateContent({
+    const response = await (await getAI()).models.generateContent({
       model: DEFAULT_MODELS.PRO,
       contents: {
         parts: [
@@ -167,7 +189,7 @@ const processAudio = async (base64Audio: string, mimeType: string): Promise<Anal
 
 // --- GENERIC CHAT (WRITING ASSISTANT) ---
 const genericChat = async (history: { role: string, text: string }[], message: string) => {
-  const response = await getAI().models.generateContent({
+  const response = await (await getAI()).models.generateContent({
     model: DEFAULT_MODELS.FLASH,
     contents: [
       ...history.map(h => ({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: h.text }] })),
@@ -208,7 +230,7 @@ const chatWithDocuments = async (
 
   contentParts.push({ text: `MENSAJE DEL USUARIO: ${message}` });
 
-  const response = await getAI().models.generateContent({
+  const response = await (await getAI()).models.generateContent({
     model: DEFAULT_MODELS.FLASH,
     contents: [
       ...history.map(h => ({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: h.text }] })),
@@ -224,7 +246,7 @@ const chatWithDocuments = async (
 
 // --- CHAT WITH SOURCE ---
 const chatWithSource = async (history: { role: string, text: string }[], transcript: string, userQuestion: string) => {
-  const response = await getAI().models.generateContent({
+  const response = await (await getAI()).models.generateContent({
     model: DEFAULT_MODELS.FLASH,
     contents: [
       { role: 'user', parts: [{ text: `CONTEXTO (Transcripción íntegra de la entrevista):\n${transcript}` }] },
@@ -292,7 +314,7 @@ const processPressRelease = async (
     }
     contentParts.push({ text: instructionText });
 
-    const response = await getAI().models.generateContent({
+    const response = await (await getAI()).models.generateContent({
       model: DEFAULT_MODELS.PRO,
       contents: { parts: contentParts },
       config: {
@@ -327,7 +349,7 @@ const verifyManualSelection = async (text: string): Promise<any> => {
   const operation = async () => {
     console.log(`[Gemini] Requesting manual verification for: "${text.substring(0, 50)}..."`);
     try {
-      const response = await getAI().models.generateContent({
+      const response = await (await getAI()).models.generateContent({
         model: DEFAULT_MODELS.PRO,
         contents: {
           parts: [

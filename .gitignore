@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Environment files — never commit API keys
+.env
+.env.local
+.env.*.local
+
+# Windows artifacts
+desktop.ini
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
