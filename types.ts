@@ -56,6 +56,7 @@ export interface FileState {
   file: File | null;
   base64: string | null;
   mimeType: string | null;
+  blob?: Blob; // WAV blob for cloud storage (only present for audio/video files)
 }
 
 export interface HistoryItem {
@@ -64,12 +65,14 @@ export interface HistoryItem {
   fileName: string;
   mode: AppMode;
   data: AnalysisResult | PressReleaseResult;
+  audioUrl?: string; // Signed URL for audio playback from Supabase Storage
 }
 
 export interface BaseJob {
   id: string;
   file: File;
   base64: string;
+  blob?: Blob;  // WAV blob for uploading to Supabase Storage
   mimeType: string;
   status: AppStatus;
   timestamp: string;

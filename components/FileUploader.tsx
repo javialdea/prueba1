@@ -74,8 +74,8 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected, onCl
       if (isVideo) {
         setIsExtracting(true);
         try {
-          const { base64 } = await extractAudioFromVideo(file);
-          onFileSelected({ file: file, base64: base64, mimeType: 'audio/wav' });
+          const { base64, blob } = await extractAudioFromVideo(file);
+          onFileSelected({ file: file, base64: base64, mimeType: 'audio/wav', blob });
         } catch (err) {
           console.error('[FileUploader] Video extraction failed, trying direct upload:', err);
           const errorMsg = err instanceof Error ? err.message : 'Error al extraer audio del video';
@@ -93,7 +93,12 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected, onCl
       } else {
         try {
           const reader = new FileReader();
-          reader.onload = () => onFileSelected({ file: file, base64: (reader.result as string).split(',')[1], mimeType: file.type });
+          reader.onload = () => {
+            const base64 = (reader.result as string).split(',')[1];
+            // For audio files, create a blob for cloud storage
+            const blob = mode === AppMode.AUDIO ? new Blob([file], { type: file.type }) : undefined;
+            onFileSelected({ file: file, base64, mimeType: file.type, blob });
+          };
           reader.onerror = () => {
             const errorMsg = `Error al leer ${file.name}`;
             setError(errorMsg);

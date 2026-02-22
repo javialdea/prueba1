@@ -85,12 +85,23 @@ const App: React.FC = () => {
           .limit(50);
 
         if (!error && data) {
-          const cloudHistory: HistoryItem[] = data.map(item => ({
-            id: item.id,
-            date: item.created_at,
-            fileName: item.file_name,
-            mode: item.job_type === 'press_release' ? AppMode.PRESS_RELEASE : AppMode.AUDIO,
-            data: item.result
+          // Generate signed URLs for items with stored audio
+          const cloudHistory: HistoryItem[] = await Promise.all(data.map(async (item) => {
+            let audioUrl: string | undefined;
+            if (item.audio_storage_path) {
+              const { data: signed } = await supabase.storage
+                .from('audio-files')
+                .createSignedUrl(item.audio_storage_path, 3600); // 1 hour
+              audioUrl = signed?.signedUrl;
+            }
+            return {
+              id: item.id,
+              date: item.created_at,
+              fileName: item.file_name,
+              mode: item.job_type === 'press_release' ? AppMode.PRESS_RELEASE : AppMode.AUDIO,
+              data: item.result,
+              audioUrl
+            };
           }));
           setHistory(cloudHistory);
           return;
@@ -121,6 +132,7 @@ const App: React.FC = () => {
         id: crypto.randomUUID(),
         file: newState.file,
         base64: newState.base64,
+        blob: newState.blob,
         mimeType: newState.mimeType,
         status: AppStatus.IDLE,
         job_type: 'audio',

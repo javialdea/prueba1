@@ -40,13 +40,31 @@ export const useJobQueue = <T extends BaseJob>(
 
                 // Save to cloud
                 if (session?.user?.id) {
+                    // Upload audio blob to Storage if present (audio jobs only)
+                    let audioStoragePath: string | null = null;
+                    if (jobType === 'audio' && pendingJob.blob) {
+                        const storagePath = `${session.user.id}/${pendingJob.id}.wav`;
+                        const { error: uploadError } = await supabase.storage
+                            .from('audio-files')
+                            .upload(storagePath, pendingJob.blob, {
+                                contentType: 'audio/wav',
+                                upsert: false
+                            });
+                        if (uploadError) {
+                            console.warn('[useJobQueue] Audio upload to storage failed:', uploadError.message);
+                        } else {
+                            audioStoragePath = storagePath;
+                        }
+                    }
+
                     await supabase.from('audio_jobs').insert({
                         user_id: session.user.id,
                         file_name: pendingJob.file.name,
                         mime_type: pendingJob.mimeType,
                         job_type: jobType,
                         status: AppStatus.COMPLETED,
-                        result: result
+                        result: result,
+                        ...(audioStoragePath ? { audio_storage_path: audioStoragePath } : {})
                     });
                 }
 
