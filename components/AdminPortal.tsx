@@ -57,14 +57,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
     const fetchData = async () => {
         setLoading(true);
         try {
-            // Fetch Profiles
+            // Fetch ALL users via admin RPC (bypasses RLS)
             const { data: pData, error: pError } = await supabase
-                .from('profiles')
-                .select('*')
-                .order('created_at', { ascending: false });
+                .rpc('get_all_users_for_admin');
 
             if (pError) {
-                console.error('Error fetching profiles:', pError);
+                console.error('Error fetching all users via RPC:', pError);
                 throw pError;
             }
             setProfiles(pData || []);
@@ -89,48 +87,43 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
             if (gError) console.error('Error fetching gemini key:', gError);
             if (gData) setGeminiKey(gData.value);
 
-            // Fetch Stats
-            const { count: audioCount } = await supabase
-                .from('audio_jobs')
-                .select('*', { count: 'exact', head: true })
-                .eq('job_type', 'audio');
+            // Fetch GLOBAL stats via admin RPC (bypasses RLS)
+            const { data: countData, error: countError } = await supabase
+                .rpc('get_global_job_counts');
 
-            const { count: pressCount } = await supabase
-                .from('audio_jobs')
-                .select('*', { count: 'exact', head: true })
-                .eq('job_type', 'press_release');
+            if (countError) {
+                console.error('Error fetching global job counts:', countError);
+            }
 
-            // Count total jobs (including those without job_type for backwards compatibility)
-            const { count: totalJobCount } = await supabase
-                .from('audio_jobs')
-                .select('*', { count: 'exact', head: true });
+            const globalCounts = countData?.[0] || { audio_count: 0, press_count: 0, total_count: 0 };
 
             setStats({
                 totalUsers: pData?.length || 0,
-                totalAudios: audioCount ?? (totalJobCount ?? 0),
-                totalPressReleases: pressCount ?? 0
+                totalAudios: Number(globalCounts.audio_count) || Number(globalCounts.total_count) || 0,
+                totalPressReleases: Number(globalCounts.press_count) || 0
             });
 
-            // Fetch actual job data for cost calculation
-            const { data: jobData } = await supabase
-                .from('audio_jobs')
-                .select('job_type, file_name, result')
-                .order('created_at', { ascending: false })
-                .limit(200);
+            // Fetch GLOBAL job data for cost calculation via admin RPC
+            const { data: jobData, error: jobError } = await supabase
+                .rpc('get_global_job_data');
+
+            if (jobError) {
+                console.error('Error fetching global job data:', jobError);
+            }
 
             if (jobData && jobData.length > 0) {
-                const audioJobs = jobData.filter(j => j.job_type === 'audio');
-                const pressJobs = jobData.filter(j => j.job_type === 'press_release');
+                const audioJobs = jobData.filter((j: any) => j.job_type === 'audio');
+                const pressJobs = jobData.filter((j: any) => j.job_type === 'press_release');
                 // Estimate audio minutes from transcription length (rough: 150 words/min, 5 chars/word)
                 const estimateMinutes = (job: any) => {
                     const transcription = job.result?.transcription || '';
                     return Math.max(1, transcription.length / (150 * 5));
                 };
                 const avgAudioMin = audioJobs.length > 0
-                    ? audioJobs.reduce((sum, j) => sum + estimateMinutes(j), 0) / audioJobs.length
+                    ? audioJobs.reduce((sum: number, j: any) => sum + estimateMinutes(j), 0) / audioJobs.length
                     : 5;
-                const audioCostTotal = audioJobs.reduce((sum, j) => sum + calculateAudioCost(estimateMinutes(j), 'paid').totalCost, 0);
-                const pressCostTotal = pressJobs.reduce((sum, _j) => sum + calculatePressReleaseCost(50, 'paid').totalCost, 0);
+                const audioCostTotal = audioJobs.reduce((sum: number, j: any) => sum + calculateAudioCost(estimateMinutes(j), 'paid').totalCost, 0);
+                const pressCostTotal = pressJobs.reduce((sum: number, _j: any) => sum + calculatePressReleaseCost(50, 'paid').totalCost, 0);
                 // Estimate chat messages per audio job (average 3 chat interactions)
                 const chatCostTotal = jobData.length * calculateChatCost(100, 3, 'paid').totalCost;
                 setCosts({
