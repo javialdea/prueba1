@@ -3,7 +3,7 @@ import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { AnalysisResult as AnalysisResultType } from '../types';
 import { FileText, List, Download, PlayCircle, PauseCircle, MessageSquare, Share2, Send, Sparkles, ShieldCheck, Info, Loader2 } from 'lucide-react';
 import { geminiService } from '../services/geminiService';
-import { jsPDF } from 'https://esm.sh/jspdf@2.5.1';
+import { jsPDF } from 'jspdf';
 
 interface AnalysisResultProps {
   result: AnalysisResultType;

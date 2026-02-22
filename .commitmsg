@@ -1,1 +1,1 @@
-security: implement all 5 audit fixes (CSP, Tailwind local, logout cleanup, path validation)
+fix: replace esm.sh jsPDF CDN import with local npm package
