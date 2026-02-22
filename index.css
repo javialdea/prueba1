@@ -1,4 +1,16 @@
-/* Placeholder for Servimedia IA */
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', sans-serif;
+  --font-serif: 'Merriweather', serif;
+  --color-servimedia-pink: #E50051;
+  --color-servimedia-orange: #F28E1C;
+  --color-servimedia-gray: #333333;
+  --color-servimedia-light: #F8F9FA;
+  --color-servimedia-border: #EEEEEE;
+}
+
+/* Base reset */
 body {
   margin: 0;
   padding: 0;

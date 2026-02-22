@@ -1,1 +1,1 @@
-fix: show audio player in transcription view when loading from history
+security: implement all 5 audit fixes (CSP, Tailwind local, logout cleanup, path validation)

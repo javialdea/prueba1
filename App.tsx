@@ -85,10 +85,11 @@ const App: React.FC = () => {
           .limit(50);
 
         if (!error && data) {
-          // Generate signed URLs for items with stored audio
+          // Validate storage paths and generate signed URLs for items with stored audio
+          const SAFE_STORAGE_PATH = /^[a-zA-Z0-9_\-\/\.]+$/;
           const cloudHistory: HistoryItem[] = await Promise.all(data.map(async (item) => {
             let audioUrl: string | undefined;
-            if (item.audio_storage_path) {
+            if (item.audio_storage_path && SAFE_STORAGE_PATH.test(item.audio_storage_path)) {
               const { data: signed } = await supabase.storage
                 .from('audio-files')
                 .createSignedUrl(item.audio_storage_path, 3600); // 1 hour

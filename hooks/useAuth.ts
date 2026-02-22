@@ -88,6 +88,8 @@ export const useAuth = () => {
 
     const logout = async () => {
         await supabase.auth.signOut();
+        // Security: clear history and signed URLs from browser storage on logout
+        localStorage.removeItem('servimedia_history_v5');
         setSession(null);
         setIsAdmin(false);
         setIsAuthOpen(false);
