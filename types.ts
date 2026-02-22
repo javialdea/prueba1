@@ -82,6 +82,7 @@ export interface BaseJob {
 export interface TranscriptionJob extends BaseJob {
   job_type: 'audio';
   result?: AnalysisResult;
+  audioUrl?: string; // Signed URL from Supabase Storage for history playback
 }
 
 export interface PressReleaseJob extends BaseJob {

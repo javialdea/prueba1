@@ -8,12 +8,13 @@ import { jsPDF } from 'https://esm.sh/jspdf@2.5.1';
 interface AnalysisResultProps {
   result: AnalysisResultType;
   audioFile: File | null;
+  audioUrl?: string; // Fallback URL from Supabase Storage (used when loading from history)
   onManualVerify?: (claim: string) => void;
 }
 
 type Tab = 'transcript' | 'chat' | 'verificador' | 'social';
 
-export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFile, onManualVerify }) => {
+export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFile, audioUrl: audioUrlProp, onManualVerify }) => {
   const mediaRef = useRef<HTMLMediaElement>(null);
   const [activeTab, setActiveTab] = useState<Tab>('transcript');
   const [chatInput, setChatInput] = useState('');
@@ -23,7 +24,9 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
   const [currentTime, setCurrentTime] = useState(0);
 
   const isVideo = audioFile?.type.startsWith('video/');
-  const mediaUrl = useMemo(() => audioFile ? URL.createObjectURL(audioFile) : null, [audioFile]);
+  // Use local blob URL if file has content, else fall back to signed Supabase URL
+  const localUrl = useMemo(() => (audioFile && audioFile.size > 0) ? URL.createObjectURL(audioFile) : null, [audioFile]);
+  const mediaUrl = localUrl ?? audioUrlProp ?? null;
 
   useEffect(() => {
     const media = mediaRef.current;

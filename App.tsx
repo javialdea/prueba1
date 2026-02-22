@@ -260,6 +260,7 @@ const App: React.FC = () => {
                 status: AppStatus.COMPLETED,
                 job_type: 'audio',
                 result: item.data as AnalysisResultType,
+                audioUrl: item.audioUrl,
                 timestamp: new Date(item.date).toLocaleTimeString()
               };
               audioQueue.addJob(newJob);
@@ -388,6 +389,7 @@ const App: React.FC = () => {
                       <AnalysisResult
                         result={audioQueue.activeJob.result}
                         audioFile={audioQueue.activeJob.file}
+                        audioUrl={(audioQueue.activeJob as any).audioUrl}
                         onManualVerify={(claim) => handleManualVerify(audioQueue.activeJob!.id, claim)}
                       />
                     </div>
