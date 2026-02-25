@@ -1,1 +1,0 @@
-fix: replace esm.sh jsPDF CDN import with local npm package
