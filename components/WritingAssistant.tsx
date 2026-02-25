@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, SpellCheck, AlignLeft, RefreshCw, Loader2, MessageSquare, Bot, User, Trash2, FileText, Plus, X } from 'lucide-react';
+import { Send, Sparkles, SpellCheck, AlignLeft, RefreshCw, Loader2, MessageSquare, Bot, User, Trash2, FileText, Plus, X, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
 import { geminiService } from '../services/geminiService';
 import { supabase } from '../services/supabase';
 import { Session } from '@supabase/supabase-js';
@@ -14,6 +14,7 @@ export const WritingAssistant: React.FC<WritingAssistantProps> = ({ session }) =
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sources, setSources] = useState<{ name: string, base64: string, mimeType: string }[]>([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -133,17 +134,38 @@ export const WritingAssistant: React.FC<WritingAssistantProps> = ({ session }) =
   };
 
   return (
-    <div className="max-w-7xl mx-auto w-full flex h-[80vh] bg-white rounded-[3rem] border border-servimedia-border shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-8">
+    <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row h-[calc(100dvh-6rem)] md:h-[80vh] bg-white rounded-[2rem] md:rounded-[3rem] border border-servimedia-border shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-8 relative">
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-30 bg-black/30 backdrop-blur-sm"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sources Sidebar */}
-      <div className="w-80 border-r border-servimedia-light flex flex-col bg-servimedia-light/20 relative">
-        <div className="p-8 border-b border-servimedia-light flex items-center justify-between">
+      <div className={`
+        md:static fixed inset-y-0 left-0 z-40
+        w-72 md:w-80 border-r border-servimedia-light flex flex-col bg-white md:bg-servimedia-light/20
+        transition-transform duration-300
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
+        <div className="p-6 md:p-8 border-b border-servimedia-light flex items-center justify-between">
           <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-servimedia-gray/40">Fuentes ({sources.length})</h3>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="p-2 bg-servimedia-orange/10 text-servimedia-orange rounded-full hover:bg-servimedia-orange hover:text-white transition-all"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2 bg-servimedia-orange/10 text-servimedia-orange rounded-full hover:bg-servimedia-orange hover:text-white transition-all"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="md:hidden p-2 hover:bg-servimedia-light rounded-full text-servimedia-gray/40 transition-all"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
           <input
             type="file"
             ref={fileInputRef}
@@ -189,15 +211,27 @@ export const WritingAssistant: React.FC<WritingAssistantProps> = ({ session }) =
 
       <div className="flex-grow flex flex-col relative overflow-hidden">
         {/* Header */}
-        <div className="px-10 py-6 border-b border-servimedia-light flex items-center justify-between bg-white sticky top-0 z-10 w-full">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-servimedia-orange rounded-2xl flex items-center justify-center text-white shadow-lg shadow-servimedia-orange/20">
-              <Bot className="w-6 h-6" />
+        <div className="px-4 md:px-10 py-4 md:py-6 border-b border-servimedia-light flex items-center justify-between bg-white sticky top-0 z-10 w-full">
+          <div className="flex items-center gap-3 md:gap-4">
+            {/* Mobile sidebar toggle */}
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="md:hidden p-2 rounded-xl hover:bg-servimedia-light transition-colors text-servimedia-gray/40 relative"
+            >
+              <PanelLeftOpen className="w-5 h-5" />
+              {sources.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-servimedia-orange text-white text-[8px] font-black rounded-full flex items-center justify-center">
+                  {sources.length}
+                </span>
+              )}
+            </button>
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-servimedia-orange rounded-xl md:rounded-2xl flex items-center justify-center text-white shadow-lg shadow-servimedia-orange/20">
+              <Bot className="w-5 h-5 md:w-6 md:h-6" />
             </div>
             <div>
-              <h3 className="font-black text-servimedia-gray text-lg tracking-tighter uppercase leading-none">Asistente de Redacción</h3>
-              <p className="text-[10px] font-bold text-servimedia-gray/30 uppercase tracking-[0.2em] mt-1">
-                {sources.length > 0 ? `Modo Análisis: ${sources.length} documentos` : 'Editor Inteligente Servimedia'}
+              <h3 className="font-black text-servimedia-gray text-sm md:text-lg tracking-tighter uppercase leading-none">Asistente de Redacción</h3>
+              <p className="text-[9px] md:text-[10px] font-bold text-servimedia-gray/30 uppercase tracking-[0.2em] mt-0.5 md:mt-1">
+                {sources.length > 0 ? `Análisis: ${sources.length} docs` : 'Editor Inteligente Servimedia'}
               </p>
             </div>
           </div>
@@ -206,34 +240,34 @@ export const WritingAssistant: React.FC<WritingAssistantProps> = ({ session }) =
               setMessages([]);
               setSources([]);
             }}
-            className="p-3 hover:bg-red-50 text-servimedia-gray/20 hover:text-red-500 rounded-full transition-all"
+            className="p-2 md:p-3 hover:bg-red-50 text-servimedia-gray/20 hover:text-red-500 rounded-full transition-all"
             title="Limpiar Conversación y Fuentes"
           >
-            <Trash2 className="w-5 h-5" />
+            <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
           </button>
         </div>
 
         {/* Messages */}
-        <div className="flex-grow overflow-y-auto p-10 space-y-8 custom-scrollbar bg-servimedia-light/30">
+        <div className="flex-grow overflow-y-auto p-4 md:p-10 space-y-6 md:space-y-8 custom-scrollbar bg-servimedia-light/30">
           {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full text-center space-y-6">
-              <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-xl mb-4">
-                <MessageSquare className="w-10 h-10 text-servimedia-orange/20" />
+            <div className="flex flex-col items-center justify-center h-full text-center space-y-4 md:space-y-6">
+              <div className="w-16 h-16 md:w-20 md:h-20 bg-white rounded-full flex items-center justify-center shadow-xl mb-2 md:mb-4">
+                <MessageSquare className="w-8 h-8 md:w-10 md:h-10 text-servimedia-orange/20" />
               </div>
-              <h4 className="text-3xl font-black text-servimedia-gray/20 tracking-tighter uppercase">¿En qué puedo ayudarte hoy?</h4>
-              <p className="text-servimedia-gray/30 font-serif italic max-w-sm">Pega un texto para corregirlo, pide un resumen o consulta cualquier dato para tu noticia.</p>
+              <h4 className="text-2xl md:text-3xl font-black text-servimedia-gray/20 tracking-tighter uppercase">¿En qué puedo ayudarte?</h4>
+              <p className="text-servimedia-gray/30 font-serif italic max-w-sm text-sm md:text-base">Pega un texto para corregirlo, pide un resumen o consulta cualquier dato.</p>
 
-              <div className="grid grid-cols-2 gap-4 w-full max-w-md mt-10">
-                <button onClick={() => quickAction('Corrige las faltas de ortografía de este texto')} className="p-4 bg-white border border-servimedia-border rounded-2xl hover:border-servimedia-orange hover:shadow-lg transition-all text-xs font-black uppercase tracking-widest text-servimedia-gray/60 flex items-center gap-3">
+              <div className="grid grid-cols-2 gap-3 md:gap-4 w-full max-w-md mt-6 md:mt-10">
+                <button onClick={() => quickAction('Corrige las faltas de ortografía de este texto')} className="p-3 md:p-4 bg-white border border-servimedia-border rounded-2xl hover:border-servimedia-orange hover:shadow-lg transition-all text-[10px] md:text-xs font-black uppercase tracking-widest text-servimedia-gray/60 flex items-center gap-2 md:gap-3">
                   <SpellCheck className="w-4 h-4 text-servimedia-orange" /> Ortografía
                 </button>
-                <button onClick={() => quickAction('Mejora el estilo y la fluidez de este texto')} className="p-4 bg-white border border-servimedia-border rounded-2xl hover:border-servimedia-orange hover:shadow-lg transition-all text-xs font-black uppercase tracking-widest text-servimedia-gray/60 flex items-center gap-3">
+                <button onClick={() => quickAction('Mejora el estilo y la fluidez de este texto')} className="p-3 md:p-4 bg-white border border-servimedia-border rounded-2xl hover:border-servimedia-orange hover:shadow-lg transition-all text-[10px] md:text-xs font-black uppercase tracking-widest text-servimedia-gray/60 flex items-center gap-2 md:gap-3">
                   <Sparkles className="w-4 h-4 text-servimedia-orange" /> Estilo
                 </button>
-                <button onClick={() => quickAction('Haz un resumen ejecutivo de este texto')} className="p-4 bg-white border border-servimedia-border rounded-2xl hover:border-servimedia-orange hover:shadow-lg transition-all text-xs font-black uppercase tracking-widest text-servimedia-gray/60 flex items-center gap-3">
+                <button onClick={() => quickAction('Haz un resumen ejecutivo de este texto')} className="p-3 md:p-4 bg-white border border-servimedia-border rounded-2xl hover:border-servimedia-orange hover:shadow-lg transition-all text-[10px] md:text-xs font-black uppercase tracking-widest text-servimedia-gray/60 flex items-center gap-2 md:gap-3">
                   <AlignLeft className="w-4 h-4 text-servimedia-orange" /> Resumir
                 </button>
-                <button onClick={() => quickAction('Traduce este texto a tono de teletipo de agencia')} className="p-4 bg-white border border-servimedia-border rounded-2xl hover:border-servimedia-orange hover:shadow-lg transition-all text-xs font-black uppercase tracking-widest text-servimedia-gray/60 flex items-center gap-3">
+                <button onClick={() => quickAction('Traduce este texto a tono de teletipo de agencia')} className="p-3 md:p-4 bg-white border border-servimedia-border rounded-2xl hover:border-servimedia-orange hover:shadow-lg transition-all text-[10px] md:text-xs font-black uppercase tracking-widest text-servimedia-gray/60 flex items-center gap-2 md:gap-3">
                   <RefreshCw className="w-4 h-4 text-servimedia-orange" /> Tono Agencia
                 </button>
               </div>
@@ -242,11 +276,11 @@ export const WritingAssistant: React.FC<WritingAssistantProps> = ({ session }) =
 
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-4`}>
-              <div className={`max-w-[85%] flex gap-4 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-sm ${m.role === 'user' ? 'bg-servimedia-pink text-white' : 'bg-servimedia-orange text-white'}`}>
-                  {m.role === 'user' ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
+              <div className={`max-w-[90%] md:max-w-[85%] flex gap-3 md:gap-4 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center shrink-0 shadow-sm ${m.role === 'user' ? 'bg-servimedia-pink text-white' : 'bg-servimedia-orange text-white'}`}>
+                  {m.role === 'user' ? <User className="w-4 h-4 md:w-5 md:h-5" /> : <Bot className="w-4 h-4 md:w-5 md:h-5" />}
                 </div>
-                <div className={`p-8 rounded-[2.5rem] shadow-sm text-xl leading-relaxed ${m.role === 'user' ? 'bg-servimedia-pink text-white rounded-tr-none font-sans' : 'bg-white text-servimedia-gray border border-servimedia-border rounded-tl-none font-sans'}`}>
+                <div className={`p-4 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] shadow-sm text-base md:text-xl leading-relaxed ${m.role === 'user' ? 'bg-servimedia-pink text-white rounded-tr-none font-sans' : 'bg-white text-servimedia-gray border border-servimedia-border rounded-tl-none font-sans'}`}>
                   {m.text.split('\n').map((line, idx) => (
                     <p key={idx} className={idx > 0 ? 'mt-4' : ''}
                       dangerouslySetInnerHTML={{
@@ -262,11 +296,11 @@ export const WritingAssistant: React.FC<WritingAssistantProps> = ({ session }) =
           ))}
           {isLoading && (
             <div className="flex justify-start">
-              <div className="flex gap-4">
-                <div className="w-10 h-10 rounded-full bg-servimedia-orange text-white flex items-center justify-center animate-pulse">
-                  <Bot className="w-5 h-5" />
+              <div className="flex gap-3 md:gap-4">
+                <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-servimedia-orange text-white flex items-center justify-center animate-pulse">
+                  <Bot className="w-4 h-4 md:w-5 md:h-5" />
                 </div>
-                <div className="bg-white p-6 rounded-3xl border border-servimedia-border flex items-center gap-3">
+                <div className="bg-white p-4 md:p-6 rounded-3xl border border-servimedia-border flex items-center gap-3">
                   <Loader2 className="w-5 h-5 animate-spin text-servimedia-orange" />
                   <span className="text-xs font-black uppercase tracking-[0.2em] text-servimedia-gray/30">Redactando...</span>
                 </div>
@@ -277,22 +311,22 @@ export const WritingAssistant: React.FC<WritingAssistantProps> = ({ session }) =
         </div>
 
         {/* Input */}
-        <div className="p-6 bg-white border-t border-servimedia-light">
-          <div className="flex gap-4 p-2 bg-servimedia-light rounded-[2.5rem] items-end ring-1 ring-servimedia-border focus-within:ring-servimedia-orange/30 transition-all">
+        <div className="p-3 md:p-6 bg-white border-t border-servimedia-light">
+          <div className="flex gap-3 md:gap-4 p-2 bg-servimedia-light rounded-[2rem] md:rounded-[2.5rem] items-end ring-1 ring-servimedia-border focus-within:ring-servimedia-orange/30 transition-all">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-              placeholder={sources.length > 0 ? `Pregunta sobre ${sources.length} documentos...` : "Haz una pregunta o pega tu texto aquí..."}
-              className="flex-grow p-6 bg-transparent border-none outline-none font-sans text-lg placeholder:text-servimedia-gray/20 resize-none max-h-40"
+              placeholder={sources.length > 0 ? `Pregunta sobre ${sources.length} docs...` : "Pregunta o pega tu texto aquí..."}
+              className="flex-grow p-4 md:p-6 bg-transparent border-none outline-none font-sans text-base md:text-lg placeholder:text-servimedia-gray/20 resize-none max-h-32 md:max-h-40"
               rows={1}
             />
             <button
               onClick={() => handleSend()}
               disabled={!input.trim() || isLoading}
-              className={`p-6 rounded-full shadow-lg transition-all ${!input.trim() || isLoading ? 'bg-servimedia-gray/10 text-white cursor-not-allowed' : 'bg-servimedia-orange text-white hover:scale-105 active:scale-95 shadow-servimedia-orange/20'}`}
+              className={`p-4 md:p-6 rounded-full shadow-lg transition-all ${!input.trim() || isLoading ? 'bg-servimedia-gray/10 text-white cursor-not-allowed' : 'bg-servimedia-orange text-white hover:scale-105 active:scale-95 shadow-servimedia-orange/20'}`}
             >
-              <Send className="w-6 h-6" />
+              <Send className="w-5 h-5 md:w-6 md:h-6" />
             </button>
           </div>
         </div>

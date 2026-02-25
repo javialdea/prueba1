@@ -154,7 +154,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected, onCl
   return (
     <div className="w-full max-w-3xl mx-auto group/uploader">
       <label
-        className={`flex flex-col items-center justify-center w-full h-80 border-2 border-dashed rounded-3xl cursor-pointer transition-all duration-500 overflow-hidden relative
+        className={`flex flex-col items-center justify-center w-full h-48 md:h-80 border-2 border-dashed rounded-3xl cursor-pointer transition-all duration-500 overflow-hidden relative
           ${dragActive ? 'border-servimedia-pink bg-servimedia-pink/5 scale-[1.02]' : 'border-servimedia-border bg-white hover:border-servimedia-pink/30 hover:bg-servimedia-pink/[0.01] hover:shadow-2xl hover:shadow-servimedia-pink/5'}
           ${isLoading ? 'opacity-50 pointer-events-none' : ''}
         `}
@@ -163,13 +163,16 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onFileSelected, onCl
         onDrop={(e) => { e.preventDefault(); setDragActive(false); if (e.dataTransfer.files) processFiles(e.dataTransfer.files); }}
       >
         <div className={`absolute top-0 left-0 w-full h-1.5 transition-all duration-700 ${dragActive ? 'bg-servimedia-pink translate-y-0' : 'bg-transparent -translate-y-full'}`}></div>
-        <div className="flex flex-col items-center justify-center text-center px-10 transition-transform duration-500 group-hover/uploader:-translate-y-1">
-          <div className="relative mb-6">
-            <Upload className={`w-16 h-16 transition-all duration-500 ${dragActive ? 'text-servimedia-pink scale-110' : 'text-servimedia-gray/10 group-hover/uploader:text-servimedia-pink/20 group-hover/uploader:scale-110'}`} />
+        <div className="flex flex-col items-center justify-center text-center px-6 md:px-10 transition-transform duration-500 group-hover/uploader:-translate-y-1">
+          <div className="relative mb-4 md:mb-6">
+            <Upload className={`w-10 h-10 md:w-16 md:h-16 transition-all duration-500 ${dragActive ? 'text-servimedia-pink scale-110' : 'text-servimedia-gray/10 group-hover/uploader:text-servimedia-pink/20 group-hover/uploader:scale-110'}`} />
             <div className={`absolute inset-0 bg-servimedia-pink blur-2xl opacity-0 transition-opacity duration-500 ${dragActive ? 'opacity-20' : 'group-hover/uploader:opacity-10'}`}></div>
           </div>
-          <h3 className="text-3xl font-black text-servimedia-gray tracking-tighter uppercase mb-2 group-hover/uploader:text-servimedia-pink transition-colors duration-500">Arrastra tu material</h3>
-          <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-servimedia-gray/40">Audio, Video, PDF o Word • Máx 100MB</p>
+          <h3 className="text-xl md:text-3xl font-black text-servimedia-gray tracking-tighter uppercase mb-2 group-hover/uploader:text-servimedia-pink transition-colors duration-500">
+            <span className="md:hidden">Toca para seleccionar</span>
+            <span className="hidden md:inline">Arrastra tu material</span>
+          </h3>
+          <p className="text-[9px] md:text-[10px] font-bold uppercase tracking-[0.25em] md:tracking-[0.3em] text-servimedia-gray/40">Audio, Video, PDF o Word • Máx 100MB</p>
         </div>
         <input
           key={`file-input-${mode}`}

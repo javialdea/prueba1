@@ -91,6 +91,9 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
   const handleDownloadPDF = async () => {
     const doc = new jsPDF();
     const margin = 20;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const lineHeight = 7;
+    const bottomMargin = 20;
     let y = 20;
 
     // Header Branding
@@ -120,7 +123,16 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
       170
     );
 
-    doc.text(splitText, margin, y);
+    // Render line by line, adding new pages when needed
+    for (const line of splitText) {
+      if (y + lineHeight > pageHeight - bottomMargin) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.text(line, margin, y);
+      y += lineHeight;
+    }
+
     doc.save(`transcripcion_servimedia_${audioFile?.name || 'documento'}.pdf`);
   };
 
@@ -182,64 +194,64 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
       {/* Cabecera Multimedia con Controles de Reproducción */}
       {mediaUrl && (
 
-        <div className="bg-servimedia-gray rounded-[2.5rem] p-4 lg:p-6 shadow-2xl flex flex-col lg:flex-row items-center gap-8 overflow-hidden">
-          <div className="w-full lg:w-1/3 aspect-video bg-black rounded-2xl overflow-hidden shadow-inner border border-white/5 relative group">
+        <div className="bg-servimedia-gray rounded-[2rem] p-4 shadow-2xl flex flex-col gap-4 overflow-hidden">
+          <div className="w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-inner border border-white/5 relative group lg:hidden">
             {isVideo ? (
-              <video
-                ref={mediaRef as any}
-                src={mediaUrl}
-                className="w-full h-full object-contain"
-                controls
-              />
+              <video ref={mediaRef as any} src={mediaUrl} className="w-full h-full object-contain" controls />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-servimedia-gray to-black">
                 <audio ref={mediaRef as any} src={mediaUrl} className="hidden" />
-                <button
-                  onClick={togglePlay}
-                  className="transition-transform hover:scale-110 active:scale-95"
-                >
-                  {isPlaying ? (
-                    <PauseCircle className="w-20 h-20 text-servimedia-pink shadow-xl" />
-                  ) : (
-                    <PlayCircle className="w-20 h-20 text-servimedia-pink shadow-xl" />
-                  )}
+                <button onClick={togglePlay} className="transition-transform active:scale-95">
+                  {isPlaying ? <PauseCircle className="w-16 h-16 text-servimedia-pink" /> : <PlayCircle className="w-16 h-16 text-servimedia-pink" />}
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="hidden lg:block w-full lg:w-1/3 aspect-video bg-black rounded-2xl overflow-hidden">
+            {isVideo ? (
+              <video ref={mediaRef as any} src={mediaUrl} className="w-full h-full object-contain" controls />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-servimedia-gray to-black">
+                <audio ref={mediaRef as any} src={mediaUrl} className="hidden" />
+                <button onClick={togglePlay} className="transition-transform hover:scale-110 active:scale-95">
+                  {isPlaying ? <PauseCircle className="w-20 h-20 text-servimedia-pink shadow-xl" /> : <PlayCircle className="w-20 h-20 text-servimedia-pink shadow-xl" />}
                 </button>
                 <span className="text-white/20 text-[10px] font-black uppercase tracking-[0.4em]">Audio Master</span>
               </div>
             )}
           </div>
-          <div className="flex-grow flex flex-col lg:flex-row justify-between items-center w-full gap-6">
-            <div className="text-center lg:text-left">
-              <h3 className="text-white text-2xl font-black tracking-tighter mb-2">{audioFile?.name}</h3>
-              <div className="flex items-center gap-4 justify-center lg:justify-start">
-                <p className="text-white/30 text-[10px] font-bold uppercase tracking-[0.3em]">Archivo de entrada procesado</p>
+          <div className="flex flex-row items-center justify-between w-full gap-3">
+            <div className="min-w-0 flex-1">
+              <h3 className="text-white text-base md:text-2xl font-black tracking-tighter mb-1 truncate">{audioFile?.name}</h3>
+              <div className="flex items-center gap-3">
+                <p className="text-white/30 text-[9px] font-bold uppercase tracking-[0.2em] hidden sm:block">Archivo procesado</p>
                 <button
                   onClick={togglePlay}
-                  className="text-white/60 hover:text-servimedia-pink flex items-center gap-2 text-[10px] font-black uppercase tracking-widest bg-white/5 px-3 py-1 rounded-lg transition-colors"
+                  className="text-white/60 hover:text-servimedia-pink flex items-center gap-2 text-[9px] font-black uppercase tracking-widest bg-white/5 px-2 py-1 rounded-lg transition-colors"
                 >
-                  {isPlaying ? <PauseCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
-                  {isPlaying ? 'Pausar' : 'Reproducir'}
+                  {isPlaying ? <PauseCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
+                  {isPlaying ? 'Pausar' : 'Play'}
                 </button>
               </div>
             </div>
             <button
               onClick={handleDownloadPDF}
-              className="bg-servimedia-pink text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center gap-3 hover:scale-105 transition-all shadow-lg shadow-servimedia-pink/20"
+              className="bg-servimedia-pink text-white px-4 py-3 md:px-8 md:py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.15em] flex items-center gap-2 hover:scale-105 transition-all shadow-lg shadow-servimedia-pink/20 shrink-0"
             >
-              <Download className="w-4 h-4" /> Descargar PDF
+              <Download className="w-4 h-4" /> <span className="hidden sm:inline">Descargar</span> PDF
             </button>
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-        <div className="lg:col-span-4 space-y-10">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-10">
+        <div className="lg:col-span-4 space-y-6 md:space-y-10">
           {/* Temas Clave Redefinidos */}
-          <div className="bg-white p-10 rounded-[2.5rem] border border-servimedia-border shadow-sm">
-            <h3 className="text-[11px] font-black text-servimedia-pink uppercase tracking-[0.4em] mb-10 border-b border-servimedia-border pb-6 flex items-center gap-3">
+          <div className="bg-white p-5 md:p-10 rounded-[2rem] border border-servimedia-border shadow-sm">
+            <h3 className="text-[11px] font-black text-servimedia-pink uppercase tracking-[0.4em] mb-5 md:mb-10 border-b border-servimedia-border pb-4 md:pb-6 flex items-center gap-3">
               <List className="w-5 h-5" /> Definición de Contenido
             </h3>
-            <div className="space-y-8">
+            <div className="space-y-5 md:space-y-8">
               {(result.topics || []).map((t, i) => (
                 <div key={i} className="group">
                   <h4 className="text-sm font-black text-servimedia-gray uppercase tracking-tighter mb-2 flex items-center gap-2">
@@ -254,13 +266,13 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
             </div>
           </div>
 
-          <div className="bg-white p-10 rounded-[2.5rem] border border-servimedia-border shadow-sm">
-            <h3 className="text-[11px] font-black text-servimedia-orange uppercase tracking-[0.4em] mb-10 border-b border-servimedia-border pb-6 flex items-center gap-3">
+          <div className="bg-white p-5 md:p-10 rounded-[2rem] border border-servimedia-border shadow-sm">
+            <h3 className="text-[11px] font-black text-servimedia-orange uppercase tracking-[0.4em] mb-5 md:mb-10 border-b border-servimedia-border pb-4 md:pb-6 flex items-center gap-3">
               <Sparkles className="w-5 h-5" /> Titulares Sugeridos
             </h3>
-            <div className="space-y-8">
+            <div className="space-y-5 md:space-y-8">
               {(result.suggestedHeadlines || []).map((h, i) => (
-                <p key={i} className="text-xl font-serif font-black text-servimedia-gray italic leading-snug border-l-4 border-servimedia-orange pl-6 hover:text-servimedia-orange transition-colors">
+                <p key={i} className="text-base md:text-xl font-serif font-black text-servimedia-gray italic leading-snug border-l-4 border-servimedia-orange pl-4 md:pl-6 hover:text-servimedia-orange transition-colors">
                   {h}
                 </p>
               ))}
@@ -268,39 +280,40 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
           </div>
         </div>
 
-        <div className="lg:col-span-8 bg-white rounded-[3rem] border border-servimedia-border shadow-sm overflow-hidden flex flex-col min-h-[800px]">
-          <div className="flex bg-servimedia-light/50 border-b border-servimedia-border">
+        <div className="lg:col-span-8 bg-white rounded-[2rem] md:rounded-[3rem] border border-servimedia-border shadow-sm overflow-hidden flex flex-col min-h-[500px] md:min-h-[800px]">
+          <div className="flex bg-servimedia-light/50 border-b border-servimedia-border overflow-x-auto">
             {[
-              { id: 'transcript', label: 'Transcripción Íntegra' },
-              { id: 'verificador', label: 'Verificación Datos' },
-              { id: 'chat', label: 'Consultar Fuente' },
-              { id: 'social', label: 'Hilo RRSS' }
+              { id: 'transcript', label: 'Transcripción', labelFull: 'Transcripción Íntegra' },
+              { id: 'verificador', label: 'Verificación', labelFull: 'Verificación Datos' },
+              { id: 'chat', label: 'Chat', labelFull: 'Consultar Fuente' },
+              { id: 'social', label: 'RRSS', labelFull: 'Hilo RRSS' }
             ].map((t) => (
               <button
                 key={t.id}
                 onClick={() => setActiveTab(t.id as Tab)}
-                className={`flex-grow px-4 py-7 text-[10px] font-black uppercase tracking-[0.3em] transition-all border-r border-servimedia-border last:border-r-0 ${activeTab === t.id ? 'bg-white text-servimedia-pink border-t-4 border-t-servimedia-pink' : 'text-servimedia-gray/30 hover:text-servimedia-gray hover:bg-white'}`}
+                className={`flex-shrink-0 flex-grow px-3 md:px-4 py-4 md:py-7 text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] md:tracking-[0.3em] transition-all border-r border-servimedia-border last:border-r-0 whitespace-nowrap ${activeTab === t.id ? 'bg-white text-servimedia-pink border-t-4 border-t-servimedia-pink' : 'text-servimedia-gray/30 hover:text-servimedia-gray hover:bg-white'}`}
               >
-                {t.label}
+                <span className="md:hidden">{t.label}</span>
+                <span className="hidden md:inline">{t.labelFull}</span>
               </button>
             ))}
           </div>
 
-          <div className="p-12 flex-grow">
+          <div className="p-4 md:p-12 flex-grow">
             {activeTab === 'transcript' && (
-              <div className="space-y-14" onMouseUp={handleSelection}>
+              <div className="space-y-6 md:space-y-14" onMouseUp={handleSelection}>
                 {(result.transcription || []).map((s, i) => {
                   const isActive = isSegmentActive(s.timestamp, result.transcription[i + 1]?.timestamp);
                   return (
-                    <div key={i} className={`flex gap-10 group animate-in slide-in-from-left-4 fade-in transition-all ${isActive ? 'translate-x-4' : ''}`}>
+                    <div key={i} className={`flex gap-3 md:gap-10 group animate-in slide-in-from-left-4 fade-in transition-all ${isActive ? 'md:translate-x-4' : ''}`}>
                       <button
                         onClick={() => handleTimestampClick(s.timestamp)}
-                        className={`flex items-center gap-3 text-[10px] font-black px-5 py-3 rounded-2xl h-fit transition-all whitespace-nowrap shadow-sm border-2 ${isActive ? 'bg-servimedia-pink text-white border-servimedia-pink' : 'text-servimedia-pink bg-servimedia-pink/5 border-transparent hover:border-servimedia-pink/20'}`}
+                        className={`flex items-center gap-2 text-[9px] font-black px-3 py-2 md:px-5 md:py-3 rounded-xl md:rounded-2xl h-fit transition-all whitespace-nowrap shadow-sm border-2 ${isActive ? 'bg-servimedia-pink text-white border-servimedia-pink' : 'text-servimedia-pink bg-servimedia-pink/5 border-transparent hover:border-servimedia-pink/20'}`}
                       >
-                        {isActive && isPlaying ? <PauseCircle className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
+                        {isActive && isPlaying ? <PauseCircle className="w-3.5 h-3.5 md:w-4 md:h-4" /> : <PlayCircle className="w-3.5 h-3.5 md:w-4 md:h-4" />}
                         {s.timestamp}
                       </button>
-                      <p className={`text-2xl font-serif leading-relaxed flex-grow selection:bg-servimedia-pink/10 transition-colors ${isActive ? 'text-servimedia-pink font-bold' : 'text-servimedia-gray'}`}>
+                      <p className={`text-base md:text-2xl font-serif leading-relaxed flex-grow selection:bg-servimedia-pink/10 transition-colors ${isActive ? 'text-servimedia-pink font-bold' : 'text-servimedia-gray'}`}>
                         {s.text}
                       </p>
                     </div>

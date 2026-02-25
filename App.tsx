@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, Loader2, Target, Clock } from 'lucide-react';
+import { Loader2, Target, Clock } from 'lucide-react';
 import { FileUploader } from './components/FileUploader';
 import { AnalysisResult } from './components/AnalysisResult';
 import { PressReleaseResult } from './components/PressReleaseResult';

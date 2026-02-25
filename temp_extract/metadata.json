@@ -1,5 +1,0 @@
-{
-  "name": "Transcriptor",
-  "description": "Una herramienta para periodistas que transcribe audio y extrae temas clave de entrevistas y discursos políticos utilizando Gemini AI.",
-  "requestFramePermissions": []
-}
