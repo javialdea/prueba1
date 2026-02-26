@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, SpellCheck, AlignLeft, RefreshCw, Loader2, MessageSquare, Bot, User, Trash2, FileText, Plus, X, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
+import { Send, Sparkles, SpellCheck, AlignLeft, RefreshCw, Loader2, MessageSquare, Bot, User, Trash2, FileText, Plus, X, PanelLeftOpen, PanelLeftClose, Copy, Check } from 'lucide-react';
 import { geminiService } from '../services/geminiService';
 import { supabase } from '../services/supabase';
 import { Session } from '@supabase/supabase-js';
@@ -15,8 +15,21 @@ export const WritingAssistant: React.FC<WritingAssistantProps> = ({ session }) =
   const [isLoading, setIsLoading] = useState(false);
   const [sources, setSources] = useState<{ name: string, base64: string, mimeType: string }[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCopy = async (text: string, index: number) => {
+    try {
+      // Remover HTML tags simples usados en el renderizado antes de copiar
+      const textToCopy = text.replace(/<(?:.|\n)*?>/gm, '');
+      await navigator.clipboard.writeText(textToCopy);
+      setCopiedIndex(index);
+      setTimeout(() => setCopiedIndex(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -89,35 +102,41 @@ export const WritingAssistant: React.FC<WritingAssistantProps> = ({ session }) =
     const files = e.target.files;
     if (!files) return;
 
-    Array.from(files).forEach(async (file: File) => {
+    Array.from(files).forEach((file: File) => {
       const reader = new FileReader();
-      reader.onload = async (event) => {
+      reader.onload = (event) => {
         const base64 = (event.target?.result as string).split(',')[1];
 
-        let cloudUrl = '';
-        if (session?.user) {
-          // Sanitize filename: remove non-alphanumeric/dot/dash/underscore
-          const safeName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.-_]/g, "_");
-          const filePath = `${session.user.id}/${crypto.randomUUID()}-${safeName}`;
-          const { error } = await supabase.storage
-            .from('documents')
-            .upload(filePath, file);
-
-          if (!error) {
-            const { data } = supabase.storage.from('documents').getPublicUrl(filePath);
-            cloudUrl = data.publicUrl;
-          }
-        }
-
+        // Añadir a fuentes inmediatamente para que la UI no se bloquee
         setSources((prev: typeof sources) => [...prev.filter(s => s.name !== file.name), {
           name: file.name,
           base64,
           mimeType: file.type,
-          cloudUrl // Add this field to the source if needed, though we primarily use base64 for Gemini for now
+          cloudUrl: ''
         }]);
+
+        if (session?.user) {
+          // Sanitize filename: remove non-alphanumeric/dot/dash/underscore
+          const safeName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.-_]/g, "_");
+          const filePath = `${session.user.id}/${crypto.randomUUID()}-${safeName}`;
+
+          supabase.storage
+            .from('documents')
+            .upload(filePath, file)
+            .then(({ error }) => {
+              if (!error) {
+                const { data } = supabase.storage.from('documents').getPublicUrl(filePath);
+                setSources(prev => prev.map(s => s.name === file.name ? { ...s, cloudUrl: data.publicUrl } : s));
+              }
+            })
+            .catch(console.error); // Silencioso en fondo
+        }
       };
       reader.readAsDataURL(file);
     });
+
+    // Limpiar input inmediatamente para permitir subir el mismo archivo o más archivos luego
+    e.target.value = '';
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -170,6 +189,7 @@ export const WritingAssistant: React.FC<WritingAssistantProps> = ({ session }) =
             type="file"
             ref={fileInputRef}
             onChange={handleFileUpload}
+            onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
             className="hidden"
             multiple
             accept=".pdf,.doc,.docx"
@@ -280,7 +300,20 @@ export const WritingAssistant: React.FC<WritingAssistantProps> = ({ session }) =
                 <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center shrink-0 shadow-sm ${m.role === 'user' ? 'bg-servimedia-pink text-white' : 'bg-servimedia-orange text-white'}`}>
                   {m.role === 'user' ? <User className="w-4 h-4 md:w-5 md:h-5" /> : <Bot className="w-4 h-4 md:w-5 md:h-5" />}
                 </div>
-                <div className={`p-4 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] shadow-sm text-base md:text-xl leading-relaxed ${m.role === 'user' ? 'bg-servimedia-pink text-white rounded-tr-none font-sans' : 'bg-white text-servimedia-gray border border-servimedia-border rounded-tl-none font-sans'}`}>
+                <div className={`p-4 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] shadow-sm text-base md:text-xl leading-relaxed relative group ${m.role === 'user' ? 'bg-servimedia-pink text-white rounded-tr-none font-sans' : 'bg-white text-servimedia-gray border border-servimedia-border rounded-tl-none font-sans'}`}>
+                  {m.role === 'model' && (
+                    <button
+                      onClick={() => handleCopy(m.text, i)}
+                      className="absolute top-4 right-4 p-2 bg-servimedia-light/50 hover:bg-servimedia-light rounded-xl text-servimedia-gray/40 hover:text-servimedia-orange transition-all opacity-0 group-hover:opacity-100"
+                      title="Copiar respuesta"
+                    >
+                      {copiedIndex === i ? (
+                        <Check className="w-4 h-4 text-green-500" />
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
+                    </button>
+                  )}
                   {m.text.split('\n').map((line, idx) => (
                     <p key={idx} className={idx > 0 ? 'mt-4' : ''}
                       dangerouslySetInnerHTML={{
