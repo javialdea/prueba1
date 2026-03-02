@@ -40,6 +40,11 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
+  // All-audio accumulator: collects every chunk since recording started (never cleared on fragment send)
+  const allChunksRef = useRef<Blob[]>([]);
+  // Counts how many fragments have been sent (used to name "Parte 1", "Parte 2", …)
+  const fragmentCountRef = useRef(0);
+
   // Guards
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isLiveRef = useRef(false);      // prevents final-flush chunk from being processed on stop
@@ -117,8 +122,9 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
   const handleSendFragment = useCallback(() => {
     if (chunksRef.current.length === 0) return;
     const currentMimeType = mimeTypeRef.current;
+    const partNumber = ++fragmentCountRef.current;
     const blob = new Blob(chunksRef.current, { type: currentMimeType });
-    const file = new File([blob], `fragmento-${Date.now()}.webm`, { type: currentMimeType });
+    const file = new File([blob], `Parte ${partNumber}.webm`, { type: currentMimeType });
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = (reader.result as string).split(',')[1];
@@ -138,6 +144,8 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
     setSeconds(0);
     setHasChunks(false);
     isStoppingRef.current = false; // reset so next recording can stop normally
+    allChunksRef.current = [];
+    fragmentCountRef.current = 0;
     setState('idle');
   };
 
@@ -160,6 +168,8 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       chunksRef.current = [];
+      allChunksRef.current = [];
+      fragmentCountRef.current = 0;
 
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
@@ -170,13 +180,17 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) { chunksRef.current.push(e.data); setHasChunks(true); }
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+          allChunksRef.current.push(e.data); // accumulate full recording
+          setHasChunks(true);
+        }
       };
       recorder.onstop = () => {
         setInterimText('');
-        if (chunksRef.current.length > 0) {
-          const blob = new Blob(chunksRef.current, { type: mimeType });
-          const file = new File([blob], `grabacion-microfono-${Date.now()}.webm`, { type: mimeType });
+        if (allChunksRef.current.length > 0) {
+          const blob = new Blob(allChunksRef.current, { type: mimeType });
+          const file = new File([blob], 'Grabación Completa.webm', { type: mimeType });
           const reader = new FileReader();
           reader.onload = () => {
             const base64 = (reader.result as string).split(',')[1];
@@ -264,6 +278,8 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       displayStream.getVideoTracks().forEach(t => t.stop());
 
       chunksRef.current = [];
+      allChunksRef.current = [];
+      fragmentCountRef.current = 0;
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : 'audio/webm';
@@ -274,12 +290,16 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) { chunksRef.current.push(e.data); setHasChunks(true); }
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+          allChunksRef.current.push(e.data); // accumulate full recording
+          setHasChunks(true);
+        }
       };
       recorder.onstop = () => {
-        if (chunksRef.current.length > 0) {
-          const blob = new Blob(chunksRef.current, { type: mimeType });
-          const file = new File([blob], `grabacion-sistema-${Date.now()}.webm`, { type: mimeType });
+        if (allChunksRef.current.length > 0) {
+          const blob = new Blob(allChunksRef.current, { type: mimeType });
+          const file = new File([blob], 'Grabación Completa.webm', { type: mimeType });
           const reader = new FileReader();
           reader.onload = () => {
             const base64 = (reader.result as string).split(',')[1];
