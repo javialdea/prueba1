@@ -27,12 +27,16 @@ export interface AnalysisResult {
 }
 
 export interface PressReleaseResult {
+  antetitulo: string;
   headline: string;
+  subtitulo: string;
   lead: string;
   body: string;
   originalText: string;
   userAngle?: string;
+  finalAntetitulo?: string;
   finalHeadline?: string;
+  finalSubtitulo?: string;
   finalLead?: string;
   finalBody?: string;
 }

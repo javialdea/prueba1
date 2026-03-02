@@ -332,10 +332,12 @@ CITAS Y DECLARACIONES
   BIEN: "Se ha mostrado muy crítico. Ha asegurado que la abstención 'permitirá gobernar', pero ha advertido de que no implica 'un acuerdo'"
 
 DEBES DEVOLVER UN JSON VÁLIDO CON LOS SIGUIENTES CAMPOS:
-1. headline: El titular (verbo en presente, claro y factual).
-2. lead: La entradilla (empieza por sujeto, pasado, responde a las 5W).
-3. body: El cuerpo del teletipo (pasado, oraciones breves, máx ~500 palabras).
-4. originalText: Transcripción limpia y completa del texto original proporcionado.
+1. antetitulo: El antetítulo (3-6 palabras, sin verbo, enmarca el tema: "Economía", "Política exterior", "Acuerdo laboral"…).
+2. headline: El titular (verbo en presente, claro y factual).
+3. subtitulo: El subtítulo (complementa el titular con un dato clave, verbo en presente, máx 20 palabras).
+4. lead: La entradilla (empieza por sujeto, pasado, responde a las 5W).
+5. body: El cuerpo del teletipo (pasado, oraciones breves, máx ~500 palabras).
+6. originalText: Transcripción limpia y completa del texto original proporcionado.
   `;
 
   return await retryOperation(async () => {
@@ -375,19 +377,23 @@ DEBES DEVOLVER UN JSON VÁLIDO CON LOS SIGUIENTES CAMPOS:
         responseSchema: {
           type: Type.OBJECT,
           properties: {
+            antetitulo: { type: Type.STRING },
             headline: { type: Type.STRING },
+            subtitulo: { type: Type.STRING },
             lead: { type: Type.STRING },
             body: { type: Type.STRING },
             originalText: { type: Type.STRING },
           },
-          required: ["headline", "lead", "body", "originalText"],
+          required: ["antetitulo", "headline", "subtitulo", "lead", "body", "originalText"],
         },
         temperature: 0.1,
       },
     });
     const parsedResult = JSON.parse(response.text || "{}");
     const result: PressReleaseResult = {
+      antetitulo: parsedResult.antetitulo || "",
       headline: parsedResult.headline || "",
+      subtitulo: parsedResult.subtitulo || "",
       lead: parsedResult.lead || "",
       body: parsedResult.body || "",
       originalText: parsedResult.originalText || sourceTextForDisplay,

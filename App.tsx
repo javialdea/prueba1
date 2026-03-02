@@ -344,8 +344,8 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {(mode === AppMode.PRESS_RELEASE && !pressQueue.activeJobId) && (
-              <div className="space-y-16">
+            {mode === AppMode.PRESS_RELEASE && (
+              <div className={pressQueue.activeJobId ? 'hidden' : 'space-y-16'}>
                 <FileUploader
                   onFileSelected={handleFileSelected}
                   onClear={handleClear}

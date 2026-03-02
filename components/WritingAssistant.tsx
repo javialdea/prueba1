@@ -277,18 +277,25 @@ export const WritingAssistant: React.FC<WritingAssistantProps> = ({ session }) =
               <h4 className="text-2xl md:text-3xl font-black text-servimedia-gray/20 tracking-tighter uppercase">¿En qué puedo ayudarte?</h4>
               <p className="text-servimedia-gray/30 font-serif italic max-w-sm text-sm md:text-base">Pega un texto para corregirlo, pide un resumen o consulta cualquier dato.</p>
 
-              <div className="grid grid-cols-2 gap-3 md:gap-4 w-full max-w-md mt-6 md:mt-10">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 w-full max-w-2xl mt-6 md:mt-10">
                 <button onClick={() => quickAction('Corrige las faltas de ortografía de este texto')} className="p-3 md:p-4 bg-white border border-servimedia-border rounded-2xl hover:border-servimedia-orange hover:shadow-lg transition-all text-[10px] md:text-xs font-black uppercase tracking-widest text-servimedia-gray/60 flex items-center gap-2 md:gap-3">
                   <SpellCheck className="w-4 h-4 text-servimedia-orange" /> Ortografía
                 </button>
-                <button onClick={() => quickAction('Mejora el estilo y la fluidez de este texto')} className="p-3 md:p-4 bg-white border border-servimedia-border rounded-2xl hover:border-servimedia-orange hover:shadow-lg transition-all text-[10px] md:text-xs font-black uppercase tracking-widest text-servimedia-gray/60 flex items-center gap-2 md:gap-3">
-                  <Sparkles className="w-4 h-4 text-servimedia-orange" /> Estilo
+                <button onClick={() => quickAction(`Reescribe esta información para asegurarte de que cumple estas normas: Eres el Redactor Jefe de la Agencia de noticias Servimedia. Tu misión es transformar el material adjunto en un TELETIPO DE AGENCIA PERFECTO, siguiendo con absoluta precisión las normas del periodismo de agencia en español.
+
+NORMAS OBLIGATORIAS:
+- ORTOGRAFÍA Y PUNTUACIÓN: Impecable. Prefijos unidos (exministro). Siglas: nombre completo y luego siglas entre paréntesis.
+- MAYÚSCULAS/MINÚSCULAS: Instituciones en MAYÚSCULAS cargos en minúscula. Meses y días en minúscula.
+- PERSONA Y VOZ: Prohibido usar primera persona. No usar voz pasiva refleja. Evitar verbos reflexivos al inicio.
+- TIEMPOS VERBALES: Titular/Subtítulo en PRESENTE. Entradilla/Cuerpo en PASADO (pretérito perfecto simple).
+- ESTRUCTURA: Titular claro con verbo conjugado en presente. Entradilla empieza siempre con el SUJETO.
+- CUERPO: Oraciones cortas y sencillas. Sujeto y verbo NUNCA separados por coma. Evitar gerundios. Máximo 500 palabras.
+- CITAS: Cargo es aposición explicativa (entre comas) solo si corresponde a una única persona. Nunca mezcles estilo directo e indirecto.
+Mantén la información original pero aplica este formato con absoluta precisión.`)} className="p-3 md:p-4 bg-white border border-servimedia-border rounded-2xl hover:border-servimedia-orange hover:shadow-lg transition-all text-[10px] md:text-xs font-black uppercase tracking-widest text-servimedia-gray/60 flex items-center gap-2 md:gap-3">
+                  <Sparkles className="w-4 h-4 text-servimedia-orange" /> Estilo Agencia
                 </button>
                 <button onClick={() => quickAction('Haz un resumen ejecutivo de este texto')} className="p-3 md:p-4 bg-white border border-servimedia-border rounded-2xl hover:border-servimedia-orange hover:shadow-lg transition-all text-[10px] md:text-xs font-black uppercase tracking-widest text-servimedia-gray/60 flex items-center gap-2 md:gap-3">
                   <AlignLeft className="w-4 h-4 text-servimedia-orange" /> Resumir
-                </button>
-                <button onClick={() => quickAction('Traduce este texto a tono de teletipo de agencia')} className="p-3 md:p-4 bg-white border border-servimedia-border rounded-2xl hover:border-servimedia-orange hover:shadow-lg transition-all text-[10px] md:text-xs font-black uppercase tracking-widest text-servimedia-gray/60 flex items-center gap-2 md:gap-3">
-                  <RefreshCw className="w-4 h-4 text-servimedia-orange" /> Tono Agencia
                 </button>
               </div>
             </div>

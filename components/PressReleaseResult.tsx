@@ -11,18 +11,22 @@ interface PressReleaseResultProps {
 
 export const PressReleaseResult: React.FC<PressReleaseResultProps> = ({ result, pdfFile, onSaveEdits }) => {
   const [copied, setCopied] = useState(false);
+  const [antetitulo, setAntetitulo] = useState(result.finalAntetitulo || result.antetitulo);
   const [headline, setHeadline] = useState(result.finalHeadline || result.headline);
+  const [subtitulo, setSubtitulo] = useState(result.finalSubtitulo || result.subtitulo);
   const [lead, setLead] = useState(result.finalLead || result.lead);
   const [body, setBody] = useState(result.finalBody || result.body);
 
   useEffect(() => {
+    setAntetitulo(result.finalAntetitulo || result.antetitulo);
     setHeadline(result.finalHeadline || result.headline);
+    setSubtitulo(result.finalSubtitulo || result.subtitulo);
     setLead(result.finalLead || result.lead);
     setBody(result.finalBody || result.body);
   }, [result]);
 
   const handleCopy = () => {
-    const text = `${headline}\n\n${lead}\n\n${body}`;
+    const text = `${antetitulo}\n\n${headline}\n\n${subtitulo}\n\n${lead}\n\n${body}`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -79,13 +83,38 @@ export const PressReleaseResult: React.FC<PressReleaseResultProps> = ({ result, 
 
           <div className="flex-grow overflow-y-auto p-12 bg-white custom-scrollbar">
             <div className="max-w-3xl mx-auto space-y-12">
-              <textarea
-                value={headline}
-                onChange={(e) => setHeadline(e.target.value)}
-                rows={2}
-                className="w-full text-3xl font-black text-servimedia-gray bg-white border-none focus:ring-0 p-0 resize-none tracking-tighter uppercase italic leading-none placeholder:text-servimedia-gray/10"
-                placeholder="TITULAR..."
-              />
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.4em] text-servimedia-orange/50 mb-2">Antetítulo</p>
+                <textarea
+                  value={antetitulo}
+                  onChange={(e) => setAntetitulo(e.target.value)}
+                  rows={1}
+                  className="w-full text-sm font-black text-servimedia-orange bg-white border-none focus:ring-0 p-0 resize-none uppercase tracking-widest placeholder:text-servimedia-gray/10"
+                  placeholder="ANTETÍTULO..."
+                />
+              </div>
+
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.4em] text-servimedia-gray/30 mb-2">Titular</p>
+                <textarea
+                  value={headline}
+                  onChange={(e) => setHeadline(e.target.value)}
+                  rows={2}
+                  className="w-full text-3xl font-black text-servimedia-gray bg-white border-none focus:ring-0 p-0 resize-none tracking-tighter uppercase italic leading-none placeholder:text-servimedia-gray/10"
+                  placeholder="TITULAR..."
+                />
+              </div>
+
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.4em] text-servimedia-gray/30 mb-2">Subtítulo</p>
+                <textarea
+                  value={subtitulo}
+                  onChange={(e) => setSubtitulo(e.target.value)}
+                  rows={2}
+                  className="w-full text-xl font-black text-servimedia-gray/60 bg-white border-none focus:ring-0 p-0 resize-none italic tracking-tight leading-snug placeholder:text-servimedia-gray/10"
+                  placeholder="SUBTÍTULO..."
+                />
+              </div>
 
               <textarea
                 value={lead}
