@@ -11,7 +11,6 @@ interface LiveRecorderProps {
 type RecorderSource = 'mic' | 'system';
 type RecorderState = 'idle' | 'requesting' | 'recording' | 'stopping' | 'done';
 
-// Extend window for cross-browser Speech Recognition
 const SpeechRecognitionAPI =
   (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -23,21 +22,29 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [isChunkTranscribing, setIsChunkTranscribing] = useState(false);
   const [fragmentSent, setFragmentSent] = useState(false);
   const [hasChunks, setHasChunks] = useState(false);
 
+  // Audio capture (both modes)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const recognitionRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Stores mimeType so handleSendFragment can access it outside startMic/startSystem closures
   const mimeTypeRef = useRef<string>('audio/webm');
-  // Used to skip transcription of the tiny final-flush chunk when recorder.stop() is called
-  const isLiveRef = useRef(false);
 
-  // Timer: runs while recording, stops on other states, resets only on 'idle'
+  // Mic-specific: Web Speech API
+  const recognitionRef = useRef<any>(null);
+
+  // System audio-specific: Gemini Live + AudioContext pipeline
+  const liveSessionRef = useRef<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+
+  // Guards
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isLiveRef = useRef(false); // prevents final-flush chunk from being processed on stop
+
+  // ── Timer ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (state === 'recording') {
       timerRef.current = setInterval(() => setSeconds(s => s + 1), 1000);
@@ -54,14 +61,40 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
     return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
   };
 
+  // ── Cleanup everything ───────────────────────────────────────────────────
   const stopAll = useCallback(() => {
     isLiveRef.current = false;
-    // Stop speech recognition (mic)
+
+    // Close Gemini Live session (system audio)
+    if (liveSessionRef.current) {
+      try {
+        liveSessionRef.current.sendRealtimeInput({ audioStreamEnd: true });
+        liveSessionRef.current.close();
+      } catch (_) {}
+      liveSessionRef.current = null;
+    }
+
+    // Disconnect AudioContext pipeline (system audio)
+    if (processorRef.current) {
+      try { processorRef.current.disconnect(); } catch (_) {}
+      processorRef.current = null;
+    }
+    if (sourceNodeRef.current) {
+      try { sourceNodeRef.current.disconnect(); } catch (_) {}
+      sourceNodeRef.current = null;
+    }
+    if (audioContextRef.current) {
+      try { audioContextRef.current.close(); } catch (_) {}
+      audioContextRef.current = null;
+    }
+
+    // Stop Web Speech API (mic)
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (_) {}
       recognitionRef.current = null;
     }
-    // Stop stream tracks
+
+    // Stop all media tracks
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
@@ -70,17 +103,16 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
 
   const handleStop = useCallback(() => {
     setState('stopping');
-    isLiveRef.current = false; // prevent final-flush chunk from being transcribed
+    isLiveRef.current = false;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop(); // onstop will fire → onFileSelected → setState('done')
+      mediaRecorderRef.current.stop(); // triggers onstop → onFileSelected → setState('done')
     }
     stopAll();
   }, [stopAll]);
 
-  // ── SEND FRAGMENT: sends accumulated audio to queue WITHOUT stopping recording ──
+  // ── Send fragment: ships accumulated audio to queue, keeps recording going ──
   const handleSendFragment = useCallback(() => {
     if (chunksRef.current.length === 0) return;
-
     const currentMimeType = mimeTypeRef.current;
     const blob = new Blob(chunksRef.current, { type: currentMimeType });
     const file = new File([blob], `fragmento-${Date.now()}.webm`, { type: currentMimeType });
@@ -90,17 +122,12 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       onFileSelected({ file, base64, mimeType: currentMimeType, blob });
     };
     reader.readAsDataURL(blob);
-
-    // Clear buffer so the next fragment starts fresh — recording continues uninterrupted
     chunksRef.current = [];
     setHasChunks(false);
-
-    // Brief visual confirmation
     setFragmentSent(true);
     setTimeout(() => setFragmentSent(false), 2500);
   }, [onFileSelected]);
 
-  // Reset to idle and clear transcript for a new recording session
   const handleNewRecording = () => {
     setFinalText('');
     setInterimText('');
@@ -115,7 +142,8 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // ── MICROPHONE ────────────────────────────────────────────────────────────
+  // ── MICROPHONE ─────────────────────────────────────────────────────────
+  // Model: MediaRecorder (full audio) + Web Speech API (live word-by-word)
   const startMic = async () => {
     setError(null);
     setFinalText('');
@@ -136,14 +164,9 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       const recorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = recorder;
 
-      // 1-second timeslice so chunks accumulate quickly for fragment sending
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-          setHasChunks(true);
-        }
+        if (e.data.size > 0) { chunksRef.current.push(e.data); setHasChunks(true); }
       };
-
       recorder.onstop = () => {
         setInterimText('');
         if (chunksRef.current.length > 0) {
@@ -159,10 +182,9 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
         setState('done');
       };
 
-      recorder.start(1000); // 1-second timeslice
-      isLiveRef.current = true;
+      recorder.start(1000); // 1-second timeslice for responsive fragment sending
 
-      // Web Speech API for live word-by-word transcription
+      // Web Speech API: live word-by-word transcription (interim + final)
       if (SpeechRecognitionAPI) {
         const recognition = new SpeechRecognitionAPI();
         recognitionRef.current = recognition;
@@ -174,12 +196,9 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
           let interim = '';
           let newFinal = '';
           for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              newFinal += transcript + ' ';
-            } else {
-              interim += transcript;
-            }
+            const t = event.results[i][0].transcript;
+            if (event.results[i].isFinal) newFinal += t + ' ';
+            else interim += t;
           }
           if (newFinal) setFinalText(prev => prev + newFinal);
           setInterimText(interim);
@@ -191,7 +210,6 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
         };
 
         recognition.onend = () => {
-          // Restart recognition if still recording (it stops automatically on silence)
           if (mediaRecorderRef.current?.state === 'recording') {
             try { recognition.start(); } catch (_) {}
           }
@@ -200,6 +218,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
         recognition.start();
       }
 
+      isLiveRef.current = true;
       setState('recording');
     } catch (err: any) {
       stopAll();
@@ -212,7 +231,9 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
     }
   };
 
-  // ── SYSTEM AUDIO ──────────────────────────────────────────────────────────
+  // ── SYSTEM AUDIO ───────────────────────────────────────────────────────
+  // Model: MediaRecorder (full audio) + Gemini Live API (live word-by-word via PCM streaming)
+  // Mirrors the mic model exactly: same interim/final text pattern, same UX
   const startSystem = async () => {
     setError(null);
     setFinalText('');
@@ -221,10 +242,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
     setState('requesting');
 
     try {
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: true,
-      });
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       streamRef.current = displayStream;
 
       const audioTracks = displayStream.getAudioTracks();
@@ -246,36 +264,13 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
         : 'audio/webm';
       mimeTypeRef.current = mimeType;
 
+      // ── MediaRecorder: captures the full audio for final Gemini analysis ──
       const recorder = new MediaRecorder(audioStream, { mimeType });
       mediaRecorderRef.current = recorder;
 
-      // Each 8-second timeslice: accumulate chunk AND transcribe it in real time
-      recorder.ondataavailable = async (e) => {
-        if (e.data.size === 0) return;
-        chunksRef.current.push(e.data);
-        setHasChunks(true);
-
-        // Skip transcription of the tiny final-flush chunk produced by recorder.stop()
-        if (!isLiveRef.current) return;
-
-        // Transcribe only this new chunk and append to the live transcript
-        const chunkBlob = new Blob([e.data], { type: mimeType });
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const base64 = (reader.result as string).split(',')[1];
-          setIsChunkTranscribing(true);
-          try {
-            const text = await geminiService.transcribeAudioChunk(base64, mimeType);
-            if (text) setFinalText(prev => prev ? prev + ' ' + text : text);
-          } catch (err) {
-            console.warn('[LiveRecorder] Chunk transcription error:', err);
-          } finally {
-            setIsChunkTranscribing(false);
-          }
-        };
-        reader.readAsDataURL(chunkBlob);
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) { chunksRef.current.push(e.data); setHasChunks(true); }
       };
-
       recorder.onstop = () => {
         if (chunksRef.current.length > 0) {
           const blob = new Blob(chunksRef.current, { type: mimeType });
@@ -290,27 +285,91 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
         setState('done');
       };
 
-      // Stop gracefully if user ends screen share from browser UI
+      recorder.start(1000);
+
+      // ── Gemini Live API: real-time transcription via PCM streaming (≡ Web Speech API for system audio) ──
+      try {
+        const liveSession = await geminiService.startLiveTranscription(
+          (text, isFinal) => {
+            // isFinal=false → interim (shown grey, overwritten on each event)
+            // isFinal=true  → final  (appended to transcript, interim cleared)
+            if (isFinal) {
+              setFinalText(prev => prev ? prev + ' ' + text : text);
+              setInterimText('');
+            } else {
+              setInterimText(text);
+            }
+          },
+          (err) => console.warn('[LiveRecorder] Live API error:', err),
+          () => {} // onClose — session closed gracefully
+        );
+        liveSessionRef.current = liveSession;
+
+        // ── AudioContext → ScriptProcessor → PCM chunks → Gemini Live ──
+        // Converts the MediaStream audio to raw 16kHz PCM and streams it in real time
+        const audioCtx = new AudioContext({ sampleRate: 16000 });
+        const source = audioCtx.createMediaStreamSource(audioStream);
+        // eslint-disable-next-line deprecation/deprecation
+        const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+        processor.onaudioprocess = (e) => {
+          if (!isLiveRef.current || !liveSessionRef.current) return;
+
+          // Resample to 16 kHz if AudioContext used a different rate
+          let float32 = e.inputBuffer.getChannelData(0);
+          const ctxRate = e.inputBuffer.sampleRate;
+          if (ctxRate !== 16000) {
+            const ratio = ctxRate / 16000;
+            const resampled = new Float32Array(Math.round(float32.length / ratio));
+            for (let i = 0; i < resampled.length; i++) {
+              resampled[i] = float32[Math.floor(i * ratio)];
+            }
+            float32 = resampled;
+          }
+
+          // Convert Float32 → Int16 PCM
+          const int16 = new Int16Array(float32.length);
+          for (let i = 0; i < float32.length; i++) {
+            const s = Math.max(-1, Math.min(1, float32[i]));
+            int16[i] = s < 0 ? s * 32768 : s * 32767;
+          }
+
+          try {
+            liveSessionRef.current.sendRealtimeInput({
+              audio: new Blob([int16.buffer], { type: 'audio/pcm' }),
+            });
+          } catch (_) {}
+        };
+
+        source.connect(processor);
+        processor.connect(audioCtx.destination);
+
+        audioContextRef.current = audioCtx;
+        processorRef.current = processor;
+        sourceNodeRef.current = source;
+
+      } catch (liveErr) {
+        // Live API unavailable (API key, network, quota…) — recording still works,
+        // the full transcript is produced by Gemini when the user stops/sends fragment
+        console.warn('[LiveRecorder] Gemini Live unavailable, live transcript disabled:', liveErr);
+      }
+
+      // Stop gracefully if the user ends the screen share from the browser UI
       audioTracks[0]?.addEventListener('ended', handleStop);
 
-      // 8-second timeslice for near-real-time Gemini transcription
-      recorder.start(8000);
       isLiveRef.current = true;
       setState('recording');
     } catch (err: any) {
       stopAll();
       setState('idle');
-      if (err.name === 'NotAllowedError') return; // User cancelled, no error message needed
+      if (err.name === 'NotAllowedError') return;
       const msg = `Error al capturar audio del sistema: ${err.message}`;
       setError(msg);
       if (onError) onError(msg);
     }
   };
 
-  const handleStart = () => {
-    if (source === 'mic') startMic();
-    else startSystem();
-  };
+  const handleStart = () => source === 'mic' ? startMic() : startSystem();
 
   const isRecording = state === 'recording';
   const isRequesting = state === 'requesting';
@@ -319,6 +378,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
 
   return (
     <div className="w-full max-w-3xl mx-auto">
+
       {/* Source selector — only in idle */}
       {state === 'idle' && (
         <div className="flex gap-3 justify-center mb-8">
@@ -350,7 +410,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
         <div className="flex items-start gap-3 p-4 bg-servimedia-orange/5 border border-servimedia-orange/20 rounded-2xl mb-6 max-w-xl mx-auto">
           <AlertCircle className="w-4 h-4 text-servimedia-orange mt-0.5 shrink-0" />
           <p className="text-[11px] text-servimedia-gray/60 leading-relaxed">
-            Solo funciona en <strong>Chrome desktop</strong>. Al compartir, elige una pestaña del navegador y activa <strong>"Compartir audio de la pestaña"</strong>. La transcripción aparece cada ~8 segundos.
+            Solo funciona en <strong>Chrome desktop</strong>. Al compartir, elige una pestaña del navegador y activa <strong>"Compartir audio de la pestaña"</strong>. La transcripción aparece en tiempo real durante la grabación.
           </p>
         </div>
       )}
@@ -380,7 +440,6 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
                 : 'Grabación en directo'}
             </span>
           </div>
-          {/* Timer — show while recording and keep visible in done state */}
           {(isRecording || isDone) && seconds > 0 && (
             <span className={`font-black text-lg tracking-tighter tabular-nums ${isRecording ? 'text-servimedia-pink' : 'text-servimedia-gray/20'}`}>
               {formatTime(seconds)}
@@ -388,34 +447,19 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
           )}
         </div>
 
-        {/* ── TRANSCRIPT AREA ── shown while recording, stopping, or done ── */}
+        {/* Transcript area */}
         {(isRecording || state === 'stopping' || isDone) && (
           <div className="px-10 py-8 min-h-[180px]">
-            {hasText || isChunkTranscribing ? (
-              /* Text content */
+            {hasText ? (
               <div className="font-serif text-xl leading-relaxed text-servimedia-gray">
                 {finalText && <span>{finalText}</span>}
                 {interimText && (
-                  <span className="text-servimedia-gray/30 italic">{interimText}</span>
-                )}
-                {isChunkTranscribing && (
-                  <span className="text-servimedia-gray/20 italic animate-pulse"> transcribiendo…</span>
+                  <span className="text-servimedia-gray/30 italic"> {interimText}</span>
                 )}
               </div>
             ) : (
-              /* No text yet — contextual placeholder */
               <div className="flex flex-col items-center justify-center h-full min-h-[120px] gap-4">
-                {isRecording && source === 'system' ? (
-                  <>
-                    <Monitor className="w-12 h-12 text-servimedia-pink/30" />
-                    <p className="text-[11px] font-black uppercase tracking-widest text-servimedia-gray/30">
-                      Capturando audio del sistema
-                    </p>
-                    <p className="text-[10px] text-servimedia-gray/20">
-                      La transcripción aparece cada ~8 segundos
-                    </p>
-                  </>
-                ) : isRecording && source === 'mic' ? (
+                {isRecording ? (
                   <span className="text-servimedia-gray/20 italic text-xl font-serif">
                     Escuchando...
                   </span>
@@ -434,12 +478,10 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
           <div className="flex flex-col items-center justify-center py-16 gap-6">
             {!isRequesting ? (
               <>
-                <div className="relative">
-                  {source === 'mic'
-                    ? <Mic className="w-14 h-14 text-servimedia-gray/10" />
-                    : <Monitor className="w-14 h-14 text-servimedia-gray/10" />
-                  }
-                </div>
+                {source === 'mic'
+                  ? <Mic className="w-14 h-14 text-servimedia-gray/10" />
+                  : <Monitor className="w-14 h-14 text-servimedia-gray/10" />
+                }
                 <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-servimedia-gray/30">
                   {source === 'mic' ? 'Listo para grabar tu voz' : 'Listo para capturar audio del sistema'}
                 </p>
@@ -464,7 +506,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
             </button>
           ) : isRecording ? (
             <>
-              {/* Send fragment — keeps recording and transcription going */}
+              {/* Enviar fragmento: sends accumulated audio, recording & transcript continue */}
               <button
                 onClick={handleSendFragment}
                 disabled={!hasChunks}
@@ -481,7 +523,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
                   : <><Send className="w-4 h-4" /> Enviar fragmento</>
                 }
               </button>
-              {/* Stop recording completely */}
+              {/* Detener: stops everything completely */}
               <button
                 onClick={handleStop}
                 className="flex items-center gap-3 px-8 py-4 bg-servimedia-gray text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-servimedia-gray/80 transition-all"
@@ -527,7 +569,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
         </div>
       )}
 
-      {/* No Speech API warning — mic, idle */}
+      {/* No Speech API warning — mic only */}
       {!SpeechRecognitionAPI && source === 'mic' && state === 'idle' && (
         <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl mt-4">
           <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />

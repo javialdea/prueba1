@@ -1,7 +1,7 @@
 ﻿
 
 // Updated to strictly follow @google/genai initialization guidelines and remove unused Schema
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { AnalysisResult, PressReleaseResult, HistoryItem, AppMode } from "../types";
 import mammoth from "mammoth";
 import { supabase } from "./supabase";
@@ -481,5 +481,44 @@ const transcribeAudioChunk = async (base64Audio: string, mimeType: string): Prom
   return response.text?.trim() || '';
 };
 
-export const geminiService = { processAudio, processPressRelease, chatWithSource, genericChat, chatWithDocuments, verifyManualSelection, transcribeAudioChunk };
+// --- LIVE TRANSCRIPTION (system audio, real-time PCM streaming via WebSocket) ---
+// Mirrors Web Speech API behaviour: fires interim (isFinal=false) and final (isFinal=true) events
+const startLiveTranscription = async (
+  onText: (text: string, isFinal: boolean) => void,
+  onError: (error: string) => void,
+  onClose: () => void
+): Promise<any> => {
+  const ai = await getAI();
+  const session = await ai.live.connect({
+    model: 'gemini-live-2.5-flash-preview',
+    callbacks: {
+      onmessage: (message: any) => {
+        // Primary path: inputAudioTranscription events — mirrors Web Speech API interim/final
+        const t = message.serverContent?.inputTranscription;
+        if (t?.text) {
+          onText(t.text, t.finished === true);
+          return;
+        }
+        // Fallback: plain model-turn text chunks
+        for (const part of (message.serverContent?.modelTurn?.parts ?? [])) {
+          if (part.text) onText(part.text, true);
+        }
+      },
+      onerror: (error: any) => {
+        onError(error?.message ?? 'Error en transcripción en directo');
+      },
+      onclose: onClose,
+    },
+    config: {
+      responseModalities: [Modality.TEXT],
+      inputAudioTranscription: {}, // enables word-by-word input transcription events
+      systemInstruction: {
+        parts: [{ text: 'Eres un transcriptor. Transcribe el audio de entrada en español, palabra a palabra. Devuelve únicamente el texto transcrito, sin comentarios ni explicaciones.' }],
+      },
+    },
+  });
+  return session;
+};
+
+export const geminiService = { processAudio, processPressRelease, chatWithSource, genericChat, chatWithDocuments, verifyManualSelection, transcribeAudioChunk, startLiveTranscription };
 
