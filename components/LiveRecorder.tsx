@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Mic, Monitor, Square, Circle, AlertCircle, Copy, Check, RotateCcw } from 'lucide-react';
+import { Mic, Monitor, Square, Circle, AlertCircle, Copy, Check, RotateCcw, Send } from 'lucide-react';
 import { FileState } from '../types';
 import { geminiService } from '../services/geminiService';
 
@@ -24,14 +24,18 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isChunkTranscribing, setIsChunkTranscribing] = useState(false);
+  const [fragmentSent, setFragmentSent] = useState(false);
+  const [hasChunks, setHasChunks] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recognitionRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const chunkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const chunkVersionRef = useRef(0);
+  // Stores mimeType so handleSendFragment can access it outside startMic/startSystem closures
+  const mimeTypeRef = useRef<string>('audio/webm');
+  // Used to skip transcription of the tiny final-flush chunk when recorder.stop() is called
+  const isLiveRef = useRef(false);
 
   // Timer: runs while recording, stops on other states, resets only on 'idle'
   useEffect(() => {
@@ -51,11 +55,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
   };
 
   const stopAll = useCallback(() => {
-    // Stop chunk interval (system audio)
-    if (chunkIntervalRef.current) {
-      clearInterval(chunkIntervalRef.current);
-      chunkIntervalRef.current = null;
-    }
+    isLiveRef.current = false;
     // Stop speech recognition (mic)
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (_) {}
@@ -70,17 +70,42 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
 
   const handleStop = useCallback(() => {
     setState('stopping');
+    isLiveRef.current = false; // prevent final-flush chunk from being transcribed
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop(); // onstop will fire → onFileSelected → setState('done')
     }
     stopAll();
   }, [stopAll]);
 
+  // ── SEND FRAGMENT: sends accumulated audio to queue WITHOUT stopping recording ──
+  const handleSendFragment = useCallback(() => {
+    if (chunksRef.current.length === 0) return;
+
+    const currentMimeType = mimeTypeRef.current;
+    const blob = new Blob(chunksRef.current, { type: currentMimeType });
+    const file = new File([blob], `fragmento-${Date.now()}.webm`, { type: currentMimeType });
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(',')[1];
+      onFileSelected({ file, base64, mimeType: currentMimeType, blob });
+    };
+    reader.readAsDataURL(blob);
+
+    // Clear buffer so the next fragment starts fresh — recording continues uninterrupted
+    chunksRef.current = [];
+    setHasChunks(false);
+
+    // Brief visual confirmation
+    setFragmentSent(true);
+    setTimeout(() => setFragmentSent(false), 2500);
+  }, [onFileSelected]);
+
   // Reset to idle and clear transcript for a new recording session
   const handleNewRecording = () => {
     setFinalText('');
     setInterimText('');
     setSeconds(0);
+    setHasChunks(false);
     setState('idle');
   };
 
@@ -95,6 +120,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
     setError(null);
     setFinalText('');
     setInterimText('');
+    setHasChunks(false);
     setState('requesting');
 
     try {
@@ -105,25 +131,36 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : 'audio/webm';
+      mimeTypeRef.current = mimeType;
+
       const recorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = recorder;
 
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      // 1-second timeslice so chunks accumulate quickly for fragment sending
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+          setHasChunks(true);
+        }
+      };
+
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        const file = new File([blob], `grabacion-microfono-${Date.now()}.webm`, { type: mimeType });
-        const reader = new FileReader();
-        reader.onload = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          onFileSelected({ file, base64, mimeType, blob });
-        };
-        reader.readAsDataURL(blob);
-        // Go to 'done': audio is in the queue, transcript stays visible
         setInterimText('');
+        if (chunksRef.current.length > 0) {
+          const blob = new Blob(chunksRef.current, { type: mimeType });
+          const file = new File([blob], `grabacion-microfono-${Date.now()}.webm`, { type: mimeType });
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64 = (reader.result as string).split(',')[1];
+            onFileSelected({ file, base64, mimeType, blob });
+          };
+          reader.readAsDataURL(blob);
+        }
         setState('done');
       };
 
-      recorder.start();
+      recorder.start(1000); // 1-second timeslice
+      isLiveRef.current = true;
 
       // Web Speech API for live word-by-word transcription
       if (SpeechRecognitionAPI) {
@@ -180,6 +217,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
     setError(null);
     setFinalText('');
     setInterimText('');
+    setHasChunks(false);
     setState('requesting');
 
     try {
@@ -206,54 +244,58 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : 'audio/webm';
+      mimeTypeRef.current = mimeType;
+
       const recorder = new MediaRecorder(audioStream, { mimeType });
       mediaRecorderRef.current = recorder;
 
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        const file = new File([blob], `grabacion-sistema-${Date.now()}.webm`, { type: mimeType });
-        const reader = new FileReader();
-        reader.onload = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          onFileSelected({ file, base64, mimeType, blob });
-        };
-        reader.readAsDataURL(blob);
-        // Go to 'done': audio is in the queue, transcript stays visible
-        setState('done');
-      };
+      // Each 8-second timeslice: accumulate chunk AND transcribe it in real time
+      recorder.ondataavailable = async (e) => {
+        if (e.data.size === 0) return;
+        chunksRef.current.push(e.data);
+        setHasChunks(true);
 
-      // Stop gracefully if user ends screen share from browser UI
-      displayStream.getVideoTracks()[0]?.addEventListener('ended', handleStop);
-      audioTracks[0]?.addEventListener('ended', handleStop);
+        // Skip transcription of the tiny final-flush chunk produced by recorder.stop()
+        if (!isLiveRef.current) return;
 
-      // Chunked transcription: every 30s send all accumulated audio to Gemini Flash
-      chunkIntervalRef.current = setInterval(() => {
-        if (chunksRef.current.length === 0) return;
-        const version = ++chunkVersionRef.current;
-        const blob = new Blob(chunksRef.current, { type: mimeType });
+        // Transcribe only this new chunk and append to the live transcript
+        const chunkBlob = new Blob([e.data], { type: mimeType });
         const reader = new FileReader();
         reader.onload = async () => {
           const base64 = (reader.result as string).split(',')[1];
           setIsChunkTranscribing(true);
           try {
             const text = await geminiService.transcribeAudioChunk(base64, mimeType);
-            // Only update if this is still the latest pending chunk
-            if (version === chunkVersionRef.current) {
-              setFinalText(text);
-            }
-          } catch (e) {
-            console.warn('[LiveRecorder] Chunk transcription error:', e);
+            if (text) setFinalText(prev => prev ? prev + ' ' + text : text);
+          } catch (err) {
+            console.warn('[LiveRecorder] Chunk transcription error:', err);
           } finally {
-            if (version === chunkVersionRef.current) {
-              setIsChunkTranscribing(false);
-            }
+            setIsChunkTranscribing(false);
           }
         };
-        reader.readAsDataURL(blob);
-      }, 30000);
+        reader.readAsDataURL(chunkBlob);
+      };
 
-      recorder.start();
+      recorder.onstop = () => {
+        if (chunksRef.current.length > 0) {
+          const blob = new Blob(chunksRef.current, { type: mimeType });
+          const file = new File([blob], `grabacion-sistema-${Date.now()}.webm`, { type: mimeType });
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64 = (reader.result as string).split(',')[1];
+            onFileSelected({ file, base64, mimeType, blob });
+          };
+          reader.readAsDataURL(blob);
+        }
+        setState('done');
+      };
+
+      // Stop gracefully if user ends screen share from browser UI
+      audioTracks[0]?.addEventListener('ended', handleStop);
+
+      // 8-second timeslice for near-real-time Gemini transcription
+      recorder.start(8000);
+      isLiveRef.current = true;
       setState('recording');
     } catch (err: any) {
       stopAll();
@@ -308,7 +350,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
         <div className="flex items-start gap-3 p-4 bg-servimedia-orange/5 border border-servimedia-orange/20 rounded-2xl mb-6 max-w-xl mx-auto">
           <AlertCircle className="w-4 h-4 text-servimedia-orange mt-0.5 shrink-0" />
           <p className="text-[11px] text-servimedia-gray/60 leading-relaxed">
-            Solo funciona en <strong>Chrome desktop</strong>. Al compartir, elige una pestaña del navegador y activa <strong>"Compartir audio de la pestaña"</strong>. La transcripción se actualiza cada 30 segundos.
+            Solo funciona en <strong>Chrome desktop</strong>. Al compartir, elige una pestaña del navegador y activa <strong>"Compartir audio de la pestaña"</strong>. La transcripción aparece cada ~8 segundos.
           </p>
         </div>
       )}
@@ -370,7 +412,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
                       Capturando audio del sistema
                     </p>
                     <p className="text-[10px] text-servimedia-gray/20">
-                      La transcripción aparece cada 30 segundos
+                      La transcripción aparece cada ~8 segundos
                     </p>
                   </>
                 ) : isRecording && source === 'mic' ? (
@@ -411,7 +453,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
         )}
 
         {/* Action buttons */}
-        <div className="flex justify-center pb-8 pt-2 gap-3">
+        <div className="flex justify-center pb-8 pt-2 gap-3 flex-wrap">
           {!isRecording && state !== 'stopping' && !isDone ? (
             <button
               onClick={handleStart}
@@ -421,12 +463,32 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
               <Circle className="w-4 h-4" /> Iniciar grabación
             </button>
           ) : isRecording ? (
-            <button
-              onClick={handleStop}
-              className="flex items-center gap-3 px-10 py-4 bg-servimedia-gray text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-servimedia-gray/80 transition-all"
-            >
-              <Square className="w-4 h-4" /> Detener grabación
-            </button>
+            <>
+              {/* Send fragment — keeps recording and transcription going */}
+              <button
+                onClick={handleSendFragment}
+                disabled={!hasChunks}
+                className={`flex items-center gap-2 px-7 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${
+                  fragmentSent
+                    ? 'bg-green-600 text-white shadow-lg shadow-green-600/20'
+                    : hasChunks
+                      ? 'bg-white border border-servimedia-border text-servimedia-gray/60 hover:border-servimedia-pink/40 hover:text-servimedia-pink'
+                      : 'bg-white border border-servimedia-border text-servimedia-gray/20 cursor-not-allowed'
+                }`}
+              >
+                {fragmentSent
+                  ? <><Check className="w-4 h-4" /> Enviado ✓</>
+                  : <><Send className="w-4 h-4" /> Enviar fragmento</>
+                }
+              </button>
+              {/* Stop recording completely */}
+              <button
+                onClick={handleStop}
+                className="flex items-center gap-3 px-8 py-4 bg-servimedia-gray text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-servimedia-gray/80 transition-all"
+              >
+                <Square className="w-4 h-4" /> Detener
+              </button>
+            </>
           ) : isDone ? (
             <>
               {finalText && (
