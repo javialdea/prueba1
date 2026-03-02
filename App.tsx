@@ -400,6 +400,14 @@ const App: React.FC = () => {
             {((mode === AppMode.AUDIO && audioQueue.activeJob?.status === AppStatus.PROCESSING) ||
               (mode === AppMode.PRESS_RELEASE && pressQueue.activeJob?.status === AppStatus.PROCESSING)) && (
                 <div className="flex flex-col items-center justify-center py-40 animate-in zoom-in-95">
+                  {mode === AppMode.AUDIO && audioInputMode === 'live' && (
+                    <button
+                      onClick={() => audioQueue.setActiveJobId(null)}
+                      className="self-start text-xs font-black uppercase tracking-[0.2em] flex items-center gap-3 text-servimedia-gray/30 hover:text-servimedia-pink transition-all group mb-12"
+                    >
+                      <span className="group-hover:-translate-x-1 transition-transform">&larr;</span> Volver a grabación
+                    </button>
+                  )}
                   <div className={`w-28 h-28 border-8 border-t-transparent rounded-full animate-spin mb-12 ${mode === AppMode.AUDIO ? 'border-servimedia-pink' : 'border-servimedia-orange'}`}></div>
                   <h2 className="text-4xl font-black text-servimedia-gray uppercase tracking-tighter">Procesando en Redacción...</h2>
                   <p className="text-servimedia-gray/20 font-bold text-sm uppercase tracking-[0.4em] mt-4">Manual de Estilo Servimedia v2024</p>
@@ -410,8 +418,17 @@ const App: React.FC = () => {
               (mode === AppMode.PRESS_RELEASE && pressQueue.activeJob?.status === AppStatus.COMPLETED)) && (
                 <div className="animate-in fade-in slide-in-from-bottom-12 duration-700">
                   <div className="flex items-center justify-between mb-12 border-b-2 border-servimedia-border pb-10">
-                    <button onClick={handleClear} className="text-xs font-black uppercase tracking-[0.2em] flex items-center gap-3 text-servimedia-gray/30 hover:text-servimedia-pink transition-all group">
-                      <span className="group-hover:-translate-x-1 transition-transform">&larr;</span> {mode === AppMode.AUDIO ? 'Cerrar Vista' : 'Nueva Solicitud'}
+                    <button
+                      onClick={() => mode === AppMode.AUDIO && audioInputMode === 'live'
+                        ? audioQueue.setActiveJobId(null)  // live mode: back to recorder, keep queue intact
+                        : handleClear()                     // file/press mode: clear everything
+                      }
+                      className="text-xs font-black uppercase tracking-[0.2em] flex items-center gap-3 text-servimedia-gray/30 hover:text-servimedia-pink transition-all group"
+                    >
+                      <span className="group-hover:-translate-x-1 transition-transform">&larr;</span>
+                      {mode === AppMode.AUDIO
+                        ? (audioInputMode === 'live' ? 'Volver a grabación' : 'Cerrar Vista')
+                        : 'Nueva Solicitud'}
                     </button>
                     <div className="flex items-center gap-3 text-xs font-bold text-servimedia-gray/20 uppercase tracking-[0.3em]">
                       <Clock className="w-4 h-4" /> Registro: {mode === AppMode.AUDIO ? audioQueue.activeJob?.timestamp : pressQueue.activeJob?.timestamp}

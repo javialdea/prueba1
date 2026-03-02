@@ -42,7 +42,8 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
 
   // Guards
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isLiveRef = useRef(false); // prevents final-flush chunk from being processed on stop
+  const isLiveRef = useRef(false);      // prevents final-flush chunk from being processed on stop
+  const isStoppingRef = useRef(false);  // prevents double-invocation of handleStop (e.g. from track 'ended' event)
 
   // ── Timer ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -102,6 +103,8 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
   }, []);
 
   const handleStop = useCallback(() => {
+    if (isStoppingRef.current) return; // guard: stopping track fires 'ended' which re-calls this
+    isStoppingRef.current = true;
     setState('stopping');
     isLiveRef.current = false;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -134,6 +137,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
     setInterimText('');
     setSeconds(0);
     setHasChunks(false);
+    isStoppingRef.current = false; // reset so next recording can stop normally
     setState('idle');
   };
 
@@ -289,22 +293,38 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       recorder.start(1000);
 
       // ── Gemini Live API: real-time transcription via PCM streaming (≡ Web Speech API for system audio) ──
-      try {
-        const liveSession = await geminiService.startLiveTranscription(
-          (text, isFinal) => {
-            // isFinal=false → interim (shown grey, overwritten on each event)
-            // isFinal=true  → final  (appended to transcript, interim cleared)
-            if (isFinal) {
-              setFinalText(prev => prev ? prev + ' ' + text : text);
-              setInterimText('');
-            } else {
-              setInterimText(text);
+      // connectLiveSession auto-reconnects when the server closes the session (e.g. 30-s timeout)
+      const connectLiveSession = async (): Promise<void> => {
+        if (!isLiveRef.current) return; // stop reconnecting once recording has stopped
+        try {
+          const session = await geminiService.startLiveTranscription(
+            (text, isFinal) => {
+              // isFinal=false → interim (shown grey, overwritten on each event)
+              // isFinal=true  → final  (appended to transcript, interim cleared)
+              if (isFinal) {
+                setFinalText(prev => prev ? prev + ' ' + text : text);
+                setInterimText('');
+              } else {
+                setInterimText(text);
+              }
+            },
+            (err) => console.warn('[LiveRecorder] Live API error:', err),
+            () => {
+              // Server closed the session (timeout, quota rotation, etc.) — reconnect immediately
+              if (isLiveRef.current) setTimeout(() => connectLiveSession(), 300);
             }
-          },
-          (err) => console.warn('[LiveRecorder] Live API error:', err),
-          () => {} // onClose — session closed gracefully
-        );
-        liveSessionRef.current = liveSession;
+          );
+          liveSessionRef.current = session;
+        } catch (err) {
+          console.warn('[LiveRecorder] Could not connect to Gemini Live:', err);
+          // Retry after 3 s — recording still works, just no live transcript until reconnected
+          if (isLiveRef.current) setTimeout(() => connectLiveSession(), 3000);
+        }
+      };
+
+      try {
+        await connectLiveSession();
+        // liveSessionRef.current is now set (or null if connection failed)
 
         // ── AudioContext → ScriptProcessor → PCM chunks → Gemini Live ──
         // Converts the MediaStream audio to raw 16kHz PCM and streams it in real time
