@@ -464,5 +464,22 @@ const verifyManualSelection = async (text: string): Promise<any> => {
   return await retryOperation(operation);
 };
 
-export const geminiService = { processAudio, processPressRelease, chatWithSource, genericChat, chatWithDocuments, verifyManualSelection };
+// --- LIVE AUDIO CHUNK TRANSCRIPTION ---
+// Lightweight Gemini Flash call used for real-time system audio transcription (every ~30s)
+const transcribeAudioChunk = async (base64Audio: string, mimeType: string): Promise<string> => {
+  const normalizedMimeType = normalizeMimeType(mimeType);
+  const response = await (await getAI()).models.generateContent({
+    model: DEFAULT_MODELS.FLASH,
+    contents: {
+      parts: [
+        { inlineData: { mimeType: normalizedMimeType, data: base64Audio } },
+        { text: 'Transcribe este audio completo en español, palabra por palabra. Devuelve únicamente el texto transcrito, sin títulos ni análisis.' },
+      ],
+    },
+    config: { temperature: 0 },
+  });
+  return response.text?.trim() || '';
+};
+
+export const geminiService = { processAudio, processPressRelease, chatWithSource, genericChat, chatWithDocuments, verifyManualSelection, transcribeAudioChunk };
 

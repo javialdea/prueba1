@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Mic, Monitor, Square, Circle, AlertCircle } from 'lucide-react';
+import { Mic, Monitor, Square, Circle, AlertCircle, Copy, Check, RotateCcw } from 'lucide-react';
 import { FileState } from '../types';
+import { geminiService } from '../services/geminiService';
 
 interface LiveRecorderProps {
   onFileSelected: (fileState: FileState) => void;
@@ -8,7 +9,7 @@ interface LiveRecorderProps {
 }
 
 type RecorderSource = 'mic' | 'system';
-type RecorderState = 'idle' | 'requesting' | 'recording' | 'stopping';
+type RecorderState = 'idle' | 'requesting' | 'recording' | 'stopping' | 'done';
 
 // Extend window for cross-browser Speech Recognition
 const SpeechRecognitionAPI =
@@ -21,14 +22,18 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
   const [interimText, setInterimText] = useState('');
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [isChunkTranscribing, setIsChunkTranscribing] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recognitionRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chunkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chunkVersionRef = useRef(0);
 
-  // Timer
+  // Timer: runs while recording, stops on other states, resets only on 'idle'
   useEffect(() => {
     if (state === 'recording') {
       timerRef.current = setInterval(() => setSeconds(s => s + 1), 1000);
@@ -46,7 +51,12 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
   };
 
   const stopAll = useCallback(() => {
-    // Stop recognition
+    // Stop chunk interval (system audio)
+    if (chunkIntervalRef.current) {
+      clearInterval(chunkIntervalRef.current);
+      chunkIntervalRef.current = null;
+    }
+    // Stop speech recognition (mic)
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (_) {}
       recognitionRef.current = null;
@@ -61,13 +71,30 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
   const handleStop = useCallback(() => {
     setState('stopping');
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop(); // onstop will fire and call onFileSelected
+      mediaRecorderRef.current.stop(); // onstop will fire → onFileSelected → setState('done')
     }
     stopAll();
   }, [stopAll]);
 
+  // Reset to idle and clear transcript for a new recording session
+  const handleNewRecording = () => {
+    setFinalText('');
+    setInterimText('');
+    setSeconds(0);
+    setState('idle');
+  };
+
+  const handleCopyTranscript = () => {
+    navigator.clipboard.writeText(finalText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // ── MICROPHONE ────────────────────────────────────────────────────────────
   const startMic = async () => {
     setError(null);
+    setFinalText('');
+    setInterimText('');
     setState('requesting');
 
     try {
@@ -75,7 +102,6 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       streamRef.current = stream;
       chunksRef.current = [];
 
-      // MediaRecorder for audio capture
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : 'audio/webm';
@@ -92,14 +118,14 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
           onFileSelected({ file, base64, mimeType, blob });
         };
         reader.readAsDataURL(blob);
-        setState('idle');
-        setFinalText('');
+        // Go to 'done': audio is in the queue, transcript stays visible
         setInterimText('');
+        setState('done');
       };
 
       recorder.start();
 
-      // Web Speech API for live transcription
+      // Web Speech API for live word-by-word transcription
       if (SpeechRecognitionAPI) {
         const recognition = new SpeechRecognitionAPI();
         recognitionRef.current = recognition;
@@ -123,13 +149,12 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
         };
 
         recognition.onerror = (e: any) => {
-          // 'no-speech' is non-fatal, ignore it
           if (e.error === 'no-speech') return;
           console.warn('[LiveRecorder] SpeechRecognition error:', e.error);
         };
 
         recognition.onend = () => {
-          // Restart if still recording (recognition stops automatically on silence)
+          // Restart recognition if still recording (it stops automatically on silence)
           if (mediaRecorderRef.current?.state === 'recording') {
             try { recognition.start(); } catch (_) {}
           }
@@ -150,8 +175,11 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
     }
   };
 
+  // ── SYSTEM AUDIO ──────────────────────────────────────────────────────────
   const startSystem = async () => {
     setError(null);
+    setFinalText('');
+    setInterimText('');
     setState('requesting');
 
     try {
@@ -161,7 +189,6 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       });
       streamRef.current = displayStream;
 
-      // Check there is an audio track
       const audioTracks = displayStream.getAudioTracks();
       if (audioTracks.length === 0) {
         displayStream.getTracks().forEach(t => t.stop());
@@ -172,9 +199,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
         return;
       }
 
-      // Build audio-only stream from display stream
       const audioStream = new MediaStream(audioTracks);
-      // Stop the video tracks — we don't need them
       displayStream.getVideoTracks().forEach(t => t.stop());
 
       chunksRef.current = [];
@@ -194,12 +219,39 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
           onFileSelected({ file, base64, mimeType, blob });
         };
         reader.readAsDataURL(blob);
-        setState('idle');
+        // Go to 'done': audio is in the queue, transcript stays visible
+        setState('done');
       };
 
-      // If the user stops sharing from the browser UI, stop recording
+      // Stop gracefully if user ends screen share from browser UI
       displayStream.getVideoTracks()[0]?.addEventListener('ended', handleStop);
       audioTracks[0]?.addEventListener('ended', handleStop);
+
+      // Chunked transcription: every 30s send all accumulated audio to Gemini Flash
+      chunkIntervalRef.current = setInterval(() => {
+        if (chunksRef.current.length === 0) return;
+        const version = ++chunkVersionRef.current;
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = (reader.result as string).split(',')[1];
+          setIsChunkTranscribing(true);
+          try {
+            const text = await geminiService.transcribeAudioChunk(base64, mimeType);
+            // Only update if this is still the latest pending chunk
+            if (version === chunkVersionRef.current) {
+              setFinalText(text);
+            }
+          } catch (e) {
+            console.warn('[LiveRecorder] Chunk transcription error:', e);
+          } finally {
+            if (version === chunkVersionRef.current) {
+              setIsChunkTranscribing(false);
+            }
+          }
+        };
+        reader.readAsDataURL(blob);
+      }, 30000);
 
       recorder.start();
       setState('recording');
@@ -220,10 +272,12 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
 
   const isRecording = state === 'recording';
   const isRequesting = state === 'requesting';
+  const isDone = state === 'done';
+  const hasText = !!(finalText || interimText);
 
   return (
     <div className="w-full max-w-3xl mx-auto">
-      {/* Source selector */}
+      {/* Source selector — only in idle */}
       {state === 'idle' && (
         <div className="flex gap-3 justify-center mb-8">
           <button
@@ -249,12 +303,12 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
         </div>
       )}
 
-      {/* System audio info */}
+      {/* System audio info — only in idle */}
       {state === 'idle' && source === 'system' && (
         <div className="flex items-start gap-3 p-4 bg-servimedia-orange/5 border border-servimedia-orange/20 rounded-2xl mb-6 max-w-xl mx-auto">
           <AlertCircle className="w-4 h-4 text-servimedia-orange mt-0.5 shrink-0" />
           <p className="text-[11px] text-servimedia-gray/60 leading-relaxed">
-            Solo funciona en <strong>Chrome desktop</strong>. Al compartir, elige una pestaña del navegador y activa <strong>"Compartir audio de la pestaña"</strong>. El texto aparecerá una vez que pares la grabación.
+            Solo funciona en <strong>Chrome desktop</strong>. Al compartir, elige una pestaña del navegador y activa <strong>"Compartir audio de la pestaña"</strong>. La transcripción se actualiza cada 30 segundos.
           </p>
         </div>
       )}
@@ -265,6 +319,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
           ? 'border-servimedia-pink bg-servimedia-pink/[0.02]'
           : 'border-servimedia-border bg-white'
       }`}>
+
         {/* Header bar */}
         <div className="flex items-center justify-between px-8 py-5 border-b border-servimedia-border/50">
           <div className="flex items-center gap-3">
@@ -279,39 +334,60 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
                 ? (source === 'mic' ? 'Grabando micrófono' : 'Grabando sistema')
                 : isRequesting ? 'Solicitando permisos...'
                 : state === 'stopping' ? 'Finalizando...'
+                : isDone ? 'Transcripción · Audio en análisis'
                 : 'Grabación en directo'}
             </span>
           </div>
-          {isRecording && (
-            <span className="text-servimedia-pink font-black text-lg tracking-tighter tabular-nums">
+          {/* Timer — show while recording and keep visible in done state */}
+          {(isRecording || isDone) && seconds > 0 && (
+            <span className={`font-black text-lg tracking-tighter tabular-nums ${isRecording ? 'text-servimedia-pink' : 'text-servimedia-gray/20'}`}>
               {formatTime(seconds)}
             </span>
           )}
         </div>
 
-        {/* Live transcript area (mic only) */}
-        {(isRecording || state === 'stopping') && source === 'mic' && (
-          <div className="px-10 py-8 min-h-[180px] font-serif text-xl leading-relaxed text-servimedia-gray">
-            {finalText && <span>{finalText}</span>}
-            {interimText && <span className="text-servimedia-gray/30 italic">{interimText}</span>}
-            {!finalText && !interimText && (
-              <span className="text-servimedia-gray/20 italic">Escuchando...</span>
+        {/* ── TRANSCRIPT AREA ── shown while recording, stopping, or done ── */}
+        {(isRecording || state === 'stopping' || isDone) && (
+          <div className="px-10 py-8 min-h-[180px]">
+            {hasText || isChunkTranscribing ? (
+              /* Text content */
+              <div className="font-serif text-xl leading-relaxed text-servimedia-gray">
+                {finalText && <span>{finalText}</span>}
+                {interimText && (
+                  <span className="text-servimedia-gray/30 italic">{interimText}</span>
+                )}
+                {isChunkTranscribing && (
+                  <span className="text-servimedia-gray/20 italic animate-pulse"> transcribiendo…</span>
+                )}
+              </div>
+            ) : (
+              /* No text yet — contextual placeholder */
+              <div className="flex flex-col items-center justify-center h-full min-h-[120px] gap-4">
+                {isRecording && source === 'system' ? (
+                  <>
+                    <Monitor className="w-12 h-12 text-servimedia-pink/30" />
+                    <p className="text-[11px] font-black uppercase tracking-widest text-servimedia-gray/30">
+                      Capturando audio del sistema
+                    </p>
+                    <p className="text-[10px] text-servimedia-gray/20">
+                      La transcripción aparece cada 30 segundos
+                    </p>
+                  </>
+                ) : isRecording && source === 'mic' ? (
+                  <span className="text-servimedia-gray/20 italic text-xl font-serif">
+                    Escuchando...
+                  </span>
+                ) : isDone ? (
+                  <p className="text-[11px] text-servimedia-gray/30 text-center">
+                    Grabación enviada para análisis completo con Gemini.
+                  </p>
+                ) : null}
+              </div>
             )}
           </div>
         )}
 
-        {/* System recording visual */}
-        {isRecording && source === 'system' && (
-          <div className="flex flex-col items-center justify-center py-16 gap-4">
-            <Monitor className="w-12 h-12 text-servimedia-pink/30" />
-            <p className="text-[11px] font-black uppercase tracking-widest text-servimedia-gray/30">
-              Capturando audio del sistema
-            </p>
-            <p className="text-[10px] text-servimedia-gray/20">El texto aparecerá tras detener la grabación</p>
-          </div>
-        )}
-
-        {/* Idle / requesting state */}
+        {/* Idle / requesting placeholder */}
         {(state === 'idle' || isRequesting) && (
           <div className="flex flex-col items-center justify-center py-16 gap-6">
             {!isRequesting ? (
@@ -334,9 +410,9 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
           </div>
         )}
 
-        {/* Action button */}
-        <div className="flex justify-center pb-8 pt-2">
-          {!isRecording && state !== 'stopping' ? (
+        {/* Action buttons */}
+        <div className="flex justify-center pb-8 pt-2 gap-3">
+          {!isRecording && state !== 'stopping' && !isDone ? (
             <button
               onClick={handleStart}
               disabled={isRequesting}
@@ -351,6 +427,28 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
             >
               <Square className="w-4 h-4" /> Detener grabación
             </button>
+          ) : isDone ? (
+            <>
+              {finalText && (
+                <button
+                  onClick={handleCopyTranscript}
+                  className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${
+                    copied
+                      ? 'bg-green-600 text-white'
+                      : 'bg-servimedia-light border border-servimedia-border text-servimedia-gray/60 hover:border-servimedia-pink/30'
+                  }`}
+                >
+                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {copied ? 'Copiado' : 'Copiar texto'}
+                </button>
+              )}
+              <button
+                onClick={handleNewRecording}
+                className="flex items-center gap-3 px-8 py-3.5 bg-servimedia-pink text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-servimedia-pink/90 transition-all shadow-lg shadow-servimedia-pink/20"
+              >
+                <RotateCcw className="w-4 h-4" /> Nueva grabación
+              </button>
+            </>
           ) : (
             <p className="text-[11px] font-black uppercase tracking-widest text-servimedia-gray/30 animate-pulse">
               Procesando audio...
@@ -367,7 +465,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
         </div>
       )}
 
-      {/* No Speech API warning */}
+      {/* No Speech API warning — mic, idle */}
       {!SpeechRecognitionAPI && source === 'mic' && state === 'idle' && (
         <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl mt-4">
           <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
