@@ -141,7 +141,8 @@ const App: React.FC = () => {
         job_type: 'audio',
         timestamp: new Date().toLocaleTimeString()
       };
-      audioQueue.addJob(newJob);
+      // isFragment=true → queued and transcribed in the background without navigating away
+      audioQueue.addJob(newJob, !newState.isFragment);
     } else {
       const newJob: PressReleaseJob = {
         id: crypto.randomUUID(),

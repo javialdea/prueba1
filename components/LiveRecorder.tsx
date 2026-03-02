@@ -119,7 +119,8 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = (reader.result as string).split(',')[1];
-      onFileSelected({ file, base64, mimeType: currentMimeType, blob });
+      // isFragment: true → App.tsx will queue it in the background without navigating away
+      onFileSelected({ file, base64, mimeType: currentMimeType, blob, isFragment: true });
     };
     reader.readAsDataURL(blob);
     chunksRef.current = [];

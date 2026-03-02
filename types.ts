@@ -61,6 +61,7 @@ export interface FileState {
   base64: string | null;
   mimeType: string | null;
   blob?: Blob; // WAV blob for cloud storage (only present for audio/video files)
+  isFragment?: boolean; // true when sent from LiveRecorder "Enviar fragmento" — processed in background without navigating away
 }
 
 export interface HistoryItem {

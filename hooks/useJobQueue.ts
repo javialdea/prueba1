@@ -113,9 +113,11 @@ export const useJobQueue = <T extends BaseJob>(
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, []);
 
-    const addJob = (job: T) => {
+    // makeActive=false → job is queued and processed in the background without
+    // changing the visible screen (used by LiveRecorder "Enviar fragmento")
+    const addJob = (job: T, makeActive = true) => {
         setJobs(prev => [...prev, job]);
-        if (!activeJobId) setActiveJobId(job.id);
+        if (makeActive && !activeJobId) setActiveJobId(job.id);
     };
 
     const clearQueue = () => {
