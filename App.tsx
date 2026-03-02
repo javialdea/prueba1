@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Target, Clock } from 'lucide-react';
+import { Loader2, Target, Clock, Upload, Radio } from 'lucide-react';
 import { FileUploader } from './components/FileUploader';
+import { LiveRecorder } from './components/LiveRecorder';
 import { AnalysisResult } from './components/AnalysisResult';
 import { PressReleaseResult } from './components/PressReleaseResult';
 import { PressReleaseQueue } from './components/PressReleaseQueue';
@@ -22,6 +23,7 @@ import { useJobQueue } from './hooks/useJobQueue';
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<AppMode>(AppMode.AUDIO);
+  const [audioInputMode, setAudioInputMode] = useState<'file' | 'live'>('file');
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
@@ -335,12 +337,42 @@ const App: React.FC = () => {
 
             {mode === AppMode.AUDIO && (
               <div className={audioQueue.activeJobId ? 'hidden' : 'block'}>
-                <FileUploader
-                  onFileSelected={handleFileSelected}
-                  onClear={handleClear}
-                  isLoading={false}
-                  mode={mode}
-                />
+                {/* Input mode toggle */}
+                <div className="flex justify-center gap-3 mb-8">
+                  <button
+                    onClick={() => setAudioInputMode('file')}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                      audioInputMode === 'file'
+                        ? 'bg-servimedia-pink text-white'
+                        : 'bg-white border border-servimedia-border text-servimedia-gray/40 hover:border-servimedia-pink/30'
+                    }`}
+                  >
+                    <Upload className="w-3.5 h-3.5" /> Subir archivo
+                  </button>
+                  <button
+                    onClick={() => setAudioInputMode('live')}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                      audioInputMode === 'live'
+                        ? 'bg-servimedia-pink text-white'
+                        : 'bg-white border border-servimedia-border text-servimedia-gray/40 hover:border-servimedia-pink/30'
+                    }`}
+                  >
+                    <Radio className="w-3.5 h-3.5" /> Grabar en directo
+                  </button>
+                </div>
+
+                {audioInputMode === 'file' ? (
+                  <FileUploader
+                    onFileSelected={handleFileSelected}
+                    onClear={handleClear}
+                    isLoading={false}
+                    mode={mode}
+                  />
+                ) : (
+                  <LiveRecorder
+                    onFileSelected={handleFileSelected}
+                  />
+                )}
               </div>
             )}
 
