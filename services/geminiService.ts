@@ -490,7 +490,7 @@ const startLiveTranscription = async (
 ): Promise<any> => {
   const ai = await getAI();
   const session = await ai.live.connect({
-    model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+    model: 'gemini-2.0-flash-live-001',
     callbacks: {
       onmessage: (message: any) => {
         // Primary path: inputAudioTranscription events — mirrors Web Speech API interim/final

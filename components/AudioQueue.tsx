@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, Loader2, Clock, Mic2 } from 'lucide-react';
+import { ChevronRight, Loader2, Clock, Mic2, ArrowLeft } from 'lucide-react';
 import { AppStatus, TranscriptionJob } from '../types';
 
 interface AudioQueueProps {
@@ -56,7 +56,12 @@ export const AudioQueue: React.FC<AudioQueueProps> = ({
                         + Añadir más
                     </button>
                 </div>
-                <button onClick={onClearQueue} className="text-[10px] font-bold uppercase text-servimedia-pink/50 hover:text-servimedia-pink transition-colors">Limpiar Cola</button>
+                <div className="flex items-center gap-3">
+                    <button onClick={onClearQueue} className="text-[10px] font-bold uppercase text-servimedia-pink/50 hover:text-servimedia-pink transition-colors">Limpiar Cola</button>
+                    <button onClick={onClearQueue} className="flex items-center gap-1.5 px-3 py-1.5 bg-servimedia-pink/10 text-servimedia-pink rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-servimedia-pink hover:text-white transition-all" title="Volver al inicio">
+                        <ArrowLeft className="w-3.5 h-3.5" /> Inicio
+                    </button>
+                </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {jobs.map(job => (

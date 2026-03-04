@@ -338,15 +338,18 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       // Set BEFORE connectLiveSession so reconnect callbacks see it as true
       isLiveRef.current = true;
 
-      // ── Gemini Live API: real-time transcription via PCM streaming (≡ Web Speech API for system audio) ──
-      // connectLiveSession auto-reconnects when the server closes the session (e.g. 30-s timeout)
+      // Stop gracefully if the user ends the screen share from the browser UI
+      audioTracks[0]?.addEventListener('ended', handleStop);
+
+      // Recording starts immediately — Live API connects in the background (never blocks)
+      setState('recording');
+
+      // ── Gemini Live API (non-blocking): real-time transcription via PCM streaming ──
       const connectLiveSession = async (): Promise<void> => {
-        if (!isLiveRef.current) return; // stop reconnecting once recording has stopped
+        if (!isLiveRef.current) return;
         try {
           const session = await geminiService.startLiveTranscription(
             (text, isFinal) => {
-              // isFinal=false → interim (shown grey, overwritten on each event)
-              // isFinal=true  → final  (appended to transcript, interim cleared)
               if (isFinal) {
                 setFinalText(prev => prev ? prev + ' ' + text : text);
                 setInterimText('');
@@ -356,83 +359,69 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
             },
             (err) => console.warn('[LiveRecorder] Live API error:', err),
             () => {
-              // Server closed the session (timeout, quota rotation, etc.) — reconnect immediately
+              // Server closed session — reconnect
               if (isLiveRef.current) setTimeout(() => connectLiveSession(), 300);
             }
           );
           liveSessionRef.current = session;
         } catch (err) {
           console.warn('[LiveRecorder] Could not connect to Gemini Live:', err);
-          // Retry after 3 s — recording still works, just no live transcript until reconnected
           if (isLiveRef.current) setTimeout(() => connectLiveSession(), 3000);
         }
       };
 
-      try {
-        await connectLiveSession();
-        // liveSessionRef.current is now set (or null if connection failed)
+      // Setup AudioContext + Live API in background (fire-and-forget)
+      (async () => {
+        try {
+          await connectLiveSession();
 
-        // ── AudioContext → ScriptProcessor → PCM chunks → Gemini Live ──
-        // Converts the MediaStream audio to raw 16kHz PCM and streams it in real time
-        const audioCtx = new AudioContext({ sampleRate: 16000 });
-        const source = audioCtx.createMediaStreamSource(audioStream);
-        // eslint-disable-next-line deprecation/deprecation
-        const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+          // ── AudioContext → ScriptProcessor → PCM chunks → Gemini Live ──
+          const audioCtx = new AudioContext({ sampleRate: 16000 });
+          const src = audioCtx.createMediaStreamSource(audioStream);
+          const processor = audioCtx.createScriptProcessor(4096, 1, 1);
 
-        processor.onaudioprocess = (e) => {
-          if (!isLiveRef.current || !liveSessionRef.current) return;
+          processor.onaudioprocess = (ev) => {
+            if (!isLiveRef.current || !liveSessionRef.current) return;
 
-          // Resample to 16 kHz if AudioContext used a different rate
-          let float32 = e.inputBuffer.getChannelData(0);
-          const ctxRate = e.inputBuffer.sampleRate;
-          if (ctxRate !== 16000) {
-            const ratio = ctxRate / 16000;
-            const resampled = new Float32Array(Math.round(float32.length / ratio));
-            for (let i = 0; i < resampled.length; i++) {
-              resampled[i] = float32[Math.floor(i * ratio)];
+            let float32 = ev.inputBuffer.getChannelData(0);
+            const ctxRate = ev.inputBuffer.sampleRate;
+            if (ctxRate !== 16000) {
+              const ratio = ctxRate / 16000;
+              const resampled = new Float32Array(Math.round(float32.length / ratio));
+              for (let i = 0; i < resampled.length; i++) {
+                resampled[i] = float32[Math.floor(i * ratio)];
+              }
+              float32 = resampled;
             }
-            float32 = resampled;
-          }
 
-          // Convert Float32 → Int16 PCM
-          const int16 = new Int16Array(float32.length);
-          for (let i = 0; i < float32.length; i++) {
-            const s = Math.max(-1, Math.min(1, float32[i]));
-            int16[i] = s < 0 ? s * 32768 : s * 32767;
-          }
-
-          try {
-            // Convert Int16 PCM → base64 (SDK expects { data: base64, mimeType } not a Blob)
-            const uint8 = new Uint8Array(int16.buffer);
-            let binary = '';
-            for (let j = 0; j < uint8.length; j++) {
-              binary += String.fromCharCode(uint8[j]);
+            const int16 = new Int16Array(float32.length);
+            for (let i = 0; i < float32.length; i++) {
+              const s = Math.max(-1, Math.min(1, float32[i]));
+              int16[i] = s < 0 ? s * 32768 : s * 32767;
             }
-            const b64 = btoa(binary);
 
-            liveSessionRef.current.sendRealtimeInput({
-              audio: { data: b64, mimeType: 'audio/pcm;rate=16000' },
-            });
-          } catch (_) {}
-        };
+            try {
+              const uint8 = new Uint8Array(int16.buffer);
+              let binary = '';
+              for (let j = 0; j < uint8.length; j++) {
+                binary += String.fromCharCode(uint8[j]);
+              }
+              liveSessionRef.current.sendRealtimeInput({
+                audio: { data: btoa(binary), mimeType: 'audio/pcm;rate=16000' },
+              });
+            } catch (_) {}
+          };
 
-        source.connect(processor);
-        processor.connect(audioCtx.destination);
+          src.connect(processor);
+          processor.connect(audioCtx.destination);
 
-        audioContextRef.current = audioCtx;
-        processorRef.current = processor;
-        sourceNodeRef.current = source;
-
-      } catch (liveErr) {
-        // Live API unavailable (API key, network, quota…) — recording still works,
-        // the full transcript is produced by Gemini when the user stops/sends fragment
-        console.warn('[LiveRecorder] Gemini Live unavailable, live transcript disabled:', liveErr);
-      }
-
-      // Stop gracefully if the user ends the screen share from the browser UI
-      audioTracks[0]?.addEventListener('ended', handleStop);
-
-      setState('recording');
+          audioContextRef.current = audioCtx;
+          processorRef.current = processor;
+          sourceNodeRef.current = src;
+        } catch (liveErr) {
+          console.warn('[LiveRecorder] Gemini Live unavailable, live transcript disabled:', liveErr);
+        }
+      })();
     } catch (err: any) {
       stopAll();
       setState('idle');
