@@ -21,18 +21,6 @@ function getAudioContext(): AudioContext {
   return globalAudioContext;
 }
 
-/**
- * Cleanup function to close the global AudioContext
- * Call this when the app is unmounting or no longer needs audio processing
- */
-export function cleanupAudioContext() {
-  if (globalAudioContext && globalAudioContext.state !== 'closed') {
-    globalAudioContext.close().catch(err => {
-      console.warn('Failed to close AudioContext:', err);
-    });
-    globalAudioContext = null;
-  }
-}
 
 export async function extractAudioFromVideo(file: File): Promise<{ blob: Blob, base64: string }> {
   try {

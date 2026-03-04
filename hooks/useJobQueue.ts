@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { Session } from '@supabase/supabase-js';
-import { AppStatus, BaseJob, AppMode } from '../types';
+import { AppStatus, BaseJob } from '../types';
 import { geminiService } from '../services/geminiService';
 import { useWakeLock } from './useWakeLock';
 

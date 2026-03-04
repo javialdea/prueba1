@@ -1,8 +1,6 @@
 ﻿
-
-// Updated to strictly follow @google/genai initialization guidelines and remove unused Schema
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { AnalysisResult, PressReleaseResult, HistoryItem, AppMode } from "../types";
+import { AnalysisResult, PressReleaseResult } from "../types";
 import mammoth from "mammoth";
 import { supabase } from "./supabase";
 
@@ -276,7 +274,7 @@ const chatWithSource = async (history: { role: string, text: string }[], transcr
 const processPressRelease = async (
   base64Data: string,
   mimeType: string,
-  userAngle?: string // Removed history?: HistoryItem[] parameter
+  userAngle?: string
 ): Promise<PressReleaseResult> => {
   const instructionText = `
 Eres el Redactor Jefe de la Agencia de noticias Servimedia. Tu misión es transformar el material adjunto en un TELETIPO DE AGENCIA PERFECTO, siguiendo con absoluta precisión las normas del periodismo de agencia en español.
@@ -464,23 +462,6 @@ const verifyManualSelection = async (text: string): Promise<any> => {
   return await retryOperation(operation);
 };
 
-// --- LIVE AUDIO CHUNK TRANSCRIPTION ---
-// Lightweight Gemini Flash call used for real-time system audio transcription (every ~30s)
-const transcribeAudioChunk = async (base64Audio: string, mimeType: string): Promise<string> => {
-  const normalizedMimeType = normalizeMimeType(mimeType);
-  const response = await (await getAI()).models.generateContent({
-    model: DEFAULT_MODELS.FLASH,
-    contents: {
-      parts: [
-        { inlineData: { mimeType: normalizedMimeType, data: base64Audio } },
-        { text: 'Transcribe este audio completo en español, palabra por palabra. Devuelve únicamente el texto transcrito, sin títulos ni análisis.' },
-      ],
-    },
-    config: { temperature: 0 },
-  });
-  return response.text?.trim() || '';
-};
-
 // --- LIVE TRANSCRIPTION (system audio, real-time PCM streaming via WebSocket) ---
 // Mirrors Web Speech API behaviour: fires interim (isFinal=false) and final (isFinal=true) events
 const startLiveTranscription = async (
@@ -520,5 +501,5 @@ const startLiveTranscription = async (
   return session;
 };
 
-export const geminiService = { processAudio, processPressRelease, chatWithSource, genericChat, chatWithDocuments, verifyManualSelection, transcribeAudioChunk, startLiveTranscription };
+export const geminiService = { processAudio, processPressRelease, chatWithSource, genericChat, chatWithDocuments, verifyManualSelection, startLiveTranscription };
 
