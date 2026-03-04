@@ -1,9 +1,10 @@
 
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { AnalysisResult as AnalysisResultType } from '../types';
-import { FileText, List, Download, PlayCircle, PauseCircle, MessageSquare, Share2, Send, Sparkles, ShieldCheck, Info, Loader2 } from 'lucide-react';
+import { AnalysisResult as AnalysisResultType, PressReleaseResult as PressReleaseResultType, TopicDetail } from '../types';
+import { FileText, List, Download, PlayCircle, PauseCircle, MessageSquare, Share2, Send, Sparkles, ShieldCheck, Info, Loader2, ArrowLeft } from 'lucide-react';
 import { geminiService } from '../services/geminiService';
 import { jsPDF } from 'jspdf';
+import { PressReleaseResult as PressReleaseResultComponent } from './PressReleaseResult';
 
 interface AnalysisResultProps {
   result: AnalysisResultType;
@@ -152,6 +153,53 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
     } finally { setIsChatLoading(false); }
   };
 
+  // --- Teletipo generation state ---
+  const [topicHeadlines, setTopicHeadlines] = useState<{
+    topicIndex: number;
+    headlines: string[];
+    isLoading: boolean;
+  } | null>(null);
+  const [teletipoOverlay, setTeletipoOverlay] = useState<PressReleaseResultType | null>(null);
+  const [isTeletipoLoading, setIsTeletipoLoading] = useState(false);
+
+  const buildTranscriptionText = () =>
+    (result.transcription || []).map(s => `[${s.timestamp}] ${s.text}`).join('\n');
+
+  const handleGenerateTeletipoForTopic = async (topic: TopicDetail, index: number) => {
+    setTopicHeadlines({ topicIndex: index, headlines: [], isLoading: true });
+    try {
+      const headlines = await geminiService.suggestHeadlinesForTopic(topic, result.transcription || []);
+      setTopicHeadlines({ topicIndex: index, headlines, isLoading: false });
+    } catch {
+      setTopicHeadlines(null);
+    }
+  };
+
+  const handleSelectHeadline = async (headline: string, topicName: string) => {
+    setTopicHeadlines(null);
+    setIsTeletipoLoading(true);
+    try {
+      const teletipo = await geminiService.generateTeletipoFromText(buildTranscriptionText(), topicName, headline);
+      setTeletipoOverlay(teletipo);
+    } catch {
+      // silently fail — loading spinner will just disappear
+    } finally {
+      setIsTeletipoLoading(false);
+    }
+  };
+
+  const handleHeadlineClick = async (headline: string) => {
+    setIsTeletipoLoading(true);
+    try {
+      const teletipo = await geminiService.generateTeletipoFromText(buildTranscriptionText(), '', headline);
+      setTeletipoOverlay(teletipo);
+    } catch {
+      // silently fail
+    } finally {
+      setIsTeletipoLoading(false);
+    }
+  };
+
   const [selection, setSelection] = useState<{ text: string, x: number, y: number } | null>(null);
 
   const handleSelection = (e: React.MouseEvent) => {
@@ -254,13 +302,43 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
             <div className="space-y-5 md:space-y-8">
               {(result.topics || []).map((t, i) => (
                 <div key={i} className="group">
-                  <h4 className="text-sm font-black text-servimedia-gray uppercase tracking-tighter mb-2 flex items-center gap-2">
-                    <div className="h-2 w-2 bg-servimedia-pink rounded-full"></div>
-                    {t.name}
-                  </h4>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <h4 className="text-sm font-black text-servimedia-gray uppercase tracking-tighter flex items-center gap-2">
+                      <div className="h-2 w-2 bg-servimedia-pink rounded-full shrink-0 mt-0.5"></div>
+                      {t.name}
+                    </h4>
+                    <button
+                      onClick={() => topicHeadlines?.topicIndex === i && !topicHeadlines.isLoading
+                        ? setTopicHeadlines(null)
+                        : handleGenerateTeletipoForTopic(t, i)}
+                      className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 bg-servimedia-pink/10 text-servimedia-pink rounded-full text-[9px] font-black uppercase tracking-widest hover:bg-servimedia-pink/20 transition-colors"
+                    >
+                      {topicHeadlines?.topicIndex === i && topicHeadlines.isLoading
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : <FileText className="w-3 h-3" />}
+                      Teletipo
+                    </button>
+                  </div>
                   <p className="text-sm text-servimedia-gray/60 leading-relaxed italic border-l border-servimedia-border pl-4">
                     {t.description}
                   </p>
+                  {/* Inline headline picker */}
+                  {topicHeadlines?.topicIndex === i && !topicHeadlines.isLoading && topicHeadlines.headlines.length > 0 && (
+                    <div className="mt-3 pl-4 border-l-2 border-servimedia-pink/30 space-y-1 animate-in slide-in-from-top-2 fade-in">
+                      <p className="text-[9px] font-black text-servimedia-pink uppercase tracking-widest mb-2">
+                        Selecciona un titular:
+                      </p>
+                      {topicHeadlines.headlines.map((h, j) => (
+                        <button
+                          key={j}
+                          onClick={() => handleSelectHeadline(h, t.name)}
+                          className="w-full text-left text-sm font-serif italic text-servimedia-gray hover:text-servimedia-pink hover:bg-servimedia-pink/5 rounded-xl px-3 py-2 transition-colors leading-snug"
+                        >
+                          {h}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -272,9 +350,17 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
             </h3>
             <div className="space-y-5 md:space-y-8">
               {(result.suggestedHeadlines || []).map((h, i) => (
-                <p key={i} className="text-base md:text-xl font-serif font-black text-servimedia-gray italic leading-snug border-l-4 border-servimedia-orange pl-4 md:pl-6 hover:text-servimedia-orange transition-colors">
-                  {h}
-                </p>
+                <button
+                  key={i}
+                  onClick={() => handleHeadlineClick(h)}
+                  className="w-full text-left text-base md:text-xl font-serif font-black text-servimedia-gray italic leading-snug border-l-4 border-servimedia-orange pl-4 md:pl-6 hover:text-servimedia-orange transition-colors group"
+                  title="Clic para generar teletipo con este titular"
+                >
+                  <span>{h}</span>
+                  <span className="block text-[9px] font-sans font-black text-servimedia-orange/0 group-hover:text-servimedia-orange/60 uppercase tracking-widest mt-1 transition-colors">
+                    → Generar teletipo
+                  </span>
+                </button>
               ))}
             </div>
           </div>
@@ -478,6 +564,34 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
           </div>
         </div>
       </div>
+
+      {/* Loading overlay while generating teletipo */}
+      {isTeletipoLoading && (
+        <div className="fixed inset-0 z-50 bg-white/80 backdrop-blur-sm flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <div className="w-10 h-10 border-[3px] border-servimedia-pink border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-sm font-black text-servimedia-gray uppercase tracking-widest">Redactando teletipo...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Teletipo result overlay */}
+      {teletipoOverlay && (
+        <div className="fixed inset-0 z-40 bg-servimedia-light overflow-y-auto">
+          <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+            <button
+              onClick={() => setTeletipoOverlay(null)}
+              className="flex items-center gap-2 text-sm font-black text-servimedia-gray hover:text-servimedia-pink transition-colors uppercase tracking-widest"
+            >
+              <ArrowLeft className="w-4 h-4" /> Volver al análisis
+            </button>
+            <h2 className="text-xs font-black uppercase tracking-[0.5em] text-servimedia-pink">
+              Teletipo Generado
+            </h2>
+            <PressReleaseResultComponent result={teletipoOverlay} pdfFile={null} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

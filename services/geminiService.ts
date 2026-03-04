@@ -1,6 +1,6 @@
 ﻿
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { AnalysisResult, PressReleaseResult } from "../types";
+import { AnalysisResult, PressReleaseResult, TopicDetail, TranscriptionSegment } from "../types";
 import mammoth from "mammoth";
 import { supabase } from "./supabase";
 
@@ -462,6 +462,142 @@ const verifyManualSelection = async (text: string): Promise<any> => {
   return await retryOperation(operation);
 };
 
+// --- SUGGEST HEADLINES FOR TOPIC ---
+// Given a topic and full transcription, returns 3 alternative headlines with different angles
+const suggestHeadlinesForTopic = async (
+  topic: TopicDetail,
+  transcription: TranscriptionSegment[]
+): Promise<string[]> => {
+  const transcriptionText = transcription.map(s => `[${s.timestamp}] ${s.text}`).join('\n');
+  const response = await (await getAI()).models.generateContent({
+    model: DEFAULT_MODELS.FLASH,
+    contents: {
+      parts: [{
+        text: `Eres un editor jefe de la Agencia Servimedia. Basándote en el siguiente tema y transcripción, propón exactamente 3 titulares periodísticos con enfoques distintos.
+
+TEMA: ${topic.name}
+DESCRIPCIÓN DEL TEMA: ${topic.description}
+
+TRANSCRIPCIÓN:
+${transcriptionText}
+
+NORMAS PARA LOS TITULARES:
+- Verbo conjugado en PRESENTE (transmite inmediatez)
+- Estilo teletipo de agencia: directo, factual, sin sensacionalismo
+- Cada titular debe tener un enfoque distinto:
+  1. FACTUAL: datos concretos y cifras del tema
+  2. CONTEXTUAL: consecuencias o implicaciones del tema
+  3. DE IMPACTO: el dato o declaración más llamativa del tema
+
+Devuelve ÚNICAMENTE un JSON válido: { "headlines": ["titular1", "titular2", "titular3"] }`
+      }]
+    },
+    config: {
+      temperature: 0.4,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          headlines: { type: Type.ARRAY, items: { type: Type.STRING } }
+        },
+        required: ["headlines"]
+      }
+    }
+  });
+  const parsed = JSON.parse(response.text || '{"headlines":[]}');
+  return parsed.headlines || [];
+};
+
+// --- GENERATE TELETIPO FROM TEXT ---
+// Generates a full press release teletipo from transcription text + a pre-selected headline
+const generateTeletipoFromText = async (
+  transcriptionText: string,
+  topicContext: string,
+  selectedHeadline: string
+): Promise<PressReleaseResult> => {
+  const instructionText = `Eres el Redactor Jefe de la Agencia de noticias Servimedia. Tu misión es redactar un TELETIPO DE AGENCIA PERFECTO a partir de la transcripción adjunta.
+
+TITULAR OBLIGATORIO: Debes usar EXACTAMENTE este titular, sin modificarlo: "${selectedHeadline}"
+${topicContext ? `TEMA A DESARROLLAR: ${topicContext}\n` : ''}
+NORMAS DE REDACCIÓN OBLIGATORIAS — aplícalas todas sin excepción:
+
+ORTOGRAFÍA Y PUNTUACIÓN
+- Ortografía impecable, sin faltas ni tildes olvidadas.
+- Los prefijos se escriben unidos a la palabra: "exministro", "expresidente". Solo se separan si afectan a dos palabras: "ex secretario general".
+- Cuando introduzcas las siglas de una organización, escribe primero el nombre completo y después las siglas entre paréntesis. Excepción: siglas muy conocidas (PP, CCOO, UGT).
+
+MAYÚSCULAS Y MINÚSCULAS
+- Nombres propios de instituciones, en mayúsculas: Guardia Civil, Policía Nacional, Ministerio de Educación.
+- Cargos de personas, en minúscula: ministro, director, portavoz.
+- Gentilicios y adjetivos, en minúscula: español, brasileño, europeo.
+- Meses y días de la semana, siempre en minúscula.
+
+PERSONA Y VOZ
+- Prohibido el uso de primera persona. Nunca: "no sabemos", "nos confirma", "nuestro país".
+- No uses la voz pasiva refleja ("se conoce", "se desconoce"). Invierte la oración o añade un sujeto explícito.
+
+TIEMPOS VERBALES
+- SUBTÍTULO: verbo en PRESENTE.
+- ENTRADILLA y CUERPO: verbo en PASADO. Usa el pretérito perfecto simple ("dijo", "anunció", "presentó").
+- NUNCA uses el presente en el cuerpo del texto fuera del titular/subtítulo.
+
+ENTRADILLA (LEAD)
+- Empieza siempre con el SUJETO. Nunca empieces con complemento circunstancial de tiempo.
+- Nunca empieces con "Ayer", "Hoy", "El pasado…".
+- Recoge quién, qué, cuándo, dónde y por qué en pocas oraciones.
+
+CUERPO DEL TELETIPO
+- Oraciones cortas y sencillas. Evita subordinadas largas y complejas.
+- Sujeto y verbo principal NUNCA separados por coma.
+- Evita los gerundios. Solo son correctos en tiempos continuos.
+- Máximo ~500 palabras en el cuerpo.
+
+DEBES DEVOLVER UN JSON VÁLIDO CON LOS SIGUIENTES CAMPOS:
+1. antetitulo: El antetítulo (3-6 palabras, sin verbo, enmarca el tema).
+2. headline: El titular EXACTO proporcionado arriba (no lo modifiques).
+3. subtitulo: El subtítulo (complementa el titular con un dato clave, verbo en presente, máx 20 palabras).
+4. lead: La entradilla (empieza por sujeto, pasado, responde a las 5W).
+5. body: El cuerpo del teletipo (pasado, oraciones breves, máx ~500 palabras).
+6. originalText: La transcripción completa proporcionada como fuente.`;
+
+  return await retryOperation(async () => {
+    const response = await (await getAI()).models.generateContent({
+      model: DEFAULT_MODELS.PRO,
+      contents: {
+        parts: [
+          { text: `TRANSCRIPCIÓN FUENTE:\n${transcriptionText}` },
+          { text: instructionText }
+        ]
+      },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            antetitulo: { type: Type.STRING },
+            headline: { type: Type.STRING },
+            subtitulo: { type: Type.STRING },
+            lead: { type: Type.STRING },
+            body: { type: Type.STRING },
+            originalText: { type: Type.STRING },
+          },
+          required: ["antetitulo", "headline", "subtitulo", "lead", "body", "originalText"],
+        },
+        temperature: 0.1,
+      },
+    });
+    const parsed = JSON.parse(response.text || '{}');
+    return {
+      antetitulo: parsed.antetitulo || '',
+      headline: parsed.headline || selectedHeadline,
+      subtitulo: parsed.subtitulo || '',
+      lead: parsed.lead || '',
+      body: parsed.body || '',
+      originalText: parsed.originalText || transcriptionText,
+    };
+  });
+};
+
 // --- LIVE TRANSCRIPTION (system audio, real-time PCM streaming via WebSocket) ---
 // Mirrors Web Speech API behaviour: fires interim (isFinal=false) and final (isFinal=true) events
 const startLiveTranscription = async (
@@ -501,5 +637,5 @@ const startLiveTranscription = async (
   return session;
 };
 
-export const geminiService = { processAudio, processPressRelease, chatWithSource, genericChat, chatWithDocuments, verifyManualSelection, startLiveTranscription };
+export const geminiService = { processAudio, processPressRelease, chatWithSource, genericChat, chatWithDocuments, verifyManualSelection, startLiveTranscription, suggestHeadlinesForTopic, generateTeletipoFromText };
 
