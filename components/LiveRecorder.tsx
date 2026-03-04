@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Mic, Monitor, Square, Circle, AlertCircle, Copy, Check, RotateCcw, Send } from 'lucide-react';
 import { FileState } from '../types';
 import { geminiService } from '../services/geminiService';
+import { useWakeLock } from '../hooks/useWakeLock';
 
 interface LiveRecorderProps {
   onFileSelected: (fileState: FileState) => void;
@@ -17,6 +18,9 @@ const SpeechRecognitionAPI =
 export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onError }) => {
   const [source, setSource] = useState<RecorderSource>('mic');
   const [state, setState] = useState<RecorderState>('idle');
+
+  // Keep screen on while recording (prevents mobile suspension)
+  useWakeLock(state === 'recording');
   const [finalText, setFinalText] = useState('');
   const [interimText, setInterimText] = useState('');
   const [seconds, setSeconds] = useState(0);
@@ -49,6 +53,25 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isLiveRef = useRef(false);      // prevents final-flush chunk from being processed on stop
   const isStoppingRef = useRef(false);  // prevents double-invocation of handleStop (e.g. from track 'ended' event)
+
+  // ── Recover after mobile screen-off / tab switch ─────────────────────────
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible' || state !== 'recording') return;
+
+      // Resume AudioContext if it was suspended (system audio)
+      if (audioContextRef.current?.state === 'suspended') {
+        audioContextRef.current.resume().catch(() => {});
+      }
+
+      // Restart SpeechRecognition if it stopped (mic)
+      if (source === 'mic' && recognitionRef.current) {
+        try { recognitionRef.current.start(); } catch (_) {}
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [state, source]);
 
   // ── Timer ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -312,6 +335,9 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
 
       recorder.start(1000);
 
+      // Set BEFORE connectLiveSession so reconnect callbacks see it as true
+      isLiveRef.current = true;
+
       // ── Gemini Live API: real-time transcription via PCM streaming (≡ Web Speech API for system audio) ──
       // connectLiveSession auto-reconnects when the server closes the session (e.g. 30-s timeout)
       const connectLiveSession = async (): Promise<void> => {
@@ -376,8 +402,16 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
           }
 
           try {
+            // Convert Int16 PCM → base64 (SDK expects { data: base64, mimeType } not a Blob)
+            const uint8 = new Uint8Array(int16.buffer);
+            let binary = '';
+            for (let j = 0; j < uint8.length; j++) {
+              binary += String.fromCharCode(uint8[j]);
+            }
+            const b64 = btoa(binary);
+
             liveSessionRef.current.sendRealtimeInput({
-              audio: new Blob([int16.buffer], { type: 'audio/pcm' }),
+              audio: { data: b64, mimeType: 'audio/pcm;rate=16000' },
             });
           } catch (_) {}
         };
@@ -398,7 +432,6 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       // Stop gracefully if the user ends the screen share from the browser UI
       audioTracks[0]?.addEventListener('ended', handleStop);
 
-      isLiveRef.current = true;
       setState('recording');
     } catch (err: any) {
       stopAll();
