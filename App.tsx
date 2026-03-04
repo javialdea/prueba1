@@ -442,6 +442,20 @@ const App: React.FC = () => {
                         audioFile={audioQueue.activeJob.file}
                         audioUrl={(audioQueue.activeJob as any).audioUrl}
                         onManualVerify={(claim) => handleManualVerify(audioQueue.activeJob!.id, claim)}
+                        onSaveTeletipo={async (teletipoResult, fileName) => {
+                          saveToHistory(teletipoResult, AppMode.PRESS_RELEASE, fileName);
+                          if (session?.user?.id) {
+                            const { error } = await supabase.from('audio_jobs').insert({
+                              user_id: session.user.id,
+                              file_name: fileName,
+                              mime_type: 'text/plain',
+                              job_type: 'press_release',
+                              status: 'COMPLETED',
+                              result: teletipoResult,
+                            });
+                            if (error) console.warn('[App] Error saving teletipo to Supabase:', error.message);
+                          }
+                        }}
                       />
                     </div>
                   )}

@@ -11,11 +11,12 @@ interface AnalysisResultProps {
   audioFile: File | null;
   audioUrl?: string; // Fallback URL from Supabase Storage (used when loading from history)
   onManualVerify?: (claim: string) => void;
+  onSaveTeletipo?: (result: PressReleaseResultType, fileName: string) => void;
 }
 
 type Tab = 'transcript' | 'chat' | 'verificador' | 'social';
 
-export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFile, audioUrl: audioUrlProp, onManualVerify }) => {
+export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFile, audioUrl: audioUrlProp, onManualVerify, onSaveTeletipo }) => {
   const mediaRef = useRef<HTMLMediaElement>(null);
   const [activeTab, setActiveTab] = useState<Tab>('transcript');
   const [chatInput, setChatInput] = useState('');
@@ -162,6 +163,11 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
   const [teletipoOverlay, setTeletipoOverlay] = useState<PressReleaseResultType | null>(null);
   const [isTeletipoLoading, setIsTeletipoLoading] = useState(false);
 
+  // Context modal state
+  const [pendingTeletipo, setPendingTeletipo] = useState<{ headline: string; topicName: string } | null>(null);
+  const [speakerWho, setSpeakerWho] = useState('');
+  const [speakerWhere, setSpeakerWhere] = useState('');
+
   const buildTranscriptionText = () =>
     (result.transcription || []).map(s => `[${s.timestamp}] ${s.text}`).join('\n');
 
@@ -175,26 +181,32 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
     }
   };
 
-  const handleSelectHeadline = async (headline: string, topicName: string) => {
+  // Both paths now go through the context modal instead of generating immediately
+  const handleSelectHeadline = (headline: string, topicName: string) => {
     setTopicHeadlines(null);
-    setIsTeletipoLoading(true);
-    try {
-      const teletipo = await geminiService.generateTeletipoFromText(buildTranscriptionText(), topicName, headline);
-      setTeletipoOverlay(teletipo);
-    } catch {
-      // silently fail — loading spinner will just disappear
-    } finally {
-      setIsTeletipoLoading(false);
-    }
+    setPendingTeletipo({ headline, topicName });
   };
 
-  const handleHeadlineClick = async (headline: string) => {
+  const handleHeadlineClick = (headline: string) => {
+    setPendingTeletipo({ headline, topicName: '' });
+  };
+
+  const handleConfirmGenerate = async () => {
+    if (!pendingTeletipo) return;
+    const contextParts = [speakerWho, speakerWhere].filter(Boolean);
+    const speakerContext = contextParts.length ? contextParts.join(' — ') : undefined;
+    setPendingTeletipo(null);
+    setSpeakerWho('');
+    setSpeakerWhere('');
     setIsTeletipoLoading(true);
     try {
-      const teletipo = await geminiService.generateTeletipoFromText(buildTranscriptionText(), '', headline);
+      const teletipo = await geminiService.generateTeletipoFromText(
+        buildTranscriptionText(), pendingTeletipo.topicName, pendingTeletipo.headline, speakerContext
+      );
       setTeletipoOverlay(teletipo);
+      onSaveTeletipo?.(teletipo, `Teletipo — ${pendingTeletipo.headline}`);
     } catch {
-      // silently fail
+      // silently fail — toast will disappear
     } finally {
       setIsTeletipoLoading(false);
     }
@@ -565,13 +577,66 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
         </div>
       </div>
 
-      {/* Loading overlay while generating teletipo */}
-      {isTeletipoLoading && (
-        <div className="fixed inset-0 z-50 bg-white/80 backdrop-blur-sm flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <div className="w-10 h-10 border-[3px] border-servimedia-pink border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-sm font-black text-servimedia-gray uppercase tracking-widest">Redactando teletipo...</p>
+      {/* Context modal — appears before generating, fields are optional */}
+      {pendingTeletipo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-[2rem] p-8 shadow-2xl w-full max-w-lg space-y-6 animate-in zoom-in-95">
+            <h3 className="text-xs font-black uppercase tracking-[0.4em] text-servimedia-pink">
+              Contexto del teletipo <span className="text-servimedia-gray/40">(opcional)</span>
+            </h3>
+            <p className="text-sm font-serif italic text-servimedia-gray/60 border-l-4 border-servimedia-pink/20 pl-4 leading-snug">
+              "{pendingTeletipo.headline}"
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-servimedia-gray/50 block mb-1.5">
+                  ¿Quién habla?
+                </label>
+                <input
+                  value={speakerWho}
+                  onChange={e => setSpeakerWho(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleConfirmGenerate()}
+                  placeholder="Ej: Pedro Sánchez, presidente del Gobierno"
+                  className="w-full border border-servimedia-border rounded-xl px-4 py-3 text-sm text-servimedia-gray outline-none focus:border-servimedia-pink transition-colors"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-[9px] font-black uppercase tracking-widest text-servimedia-gray/50 block mb-1.5">
+                  ¿Dónde y cuándo?
+                </label>
+                <input
+                  value={speakerWhere}
+                  onChange={e => setSpeakerWhere(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleConfirmGenerate()}
+                  placeholder="Ej: Rueda de prensa en La Moncloa, 5 de marzo de 2026"
+                  className="w-full border border-servimedia-border rounded-xl px-4 py-3 text-sm text-servimedia-gray outline-none focus:border-servimedia-pink transition-colors"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => { setPendingTeletipo(null); setSpeakerWho(''); setSpeakerWhere(''); }}
+                className="flex-1 py-3 rounded-xl border border-servimedia-border text-sm font-black text-servimedia-gray/50 hover:text-servimedia-gray transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmGenerate}
+                className="flex-1 py-3 rounded-xl bg-servimedia-pink text-white text-sm font-black hover:opacity-90 transition-opacity"
+              >
+                Generar teletipo
+              </button>
+            </div>
           </div>
+        </div>
+      )}
+
+      {/* Non-blocking toast while generating */}
+      {isTeletipoLoading && (
+        <div className="fixed bottom-6 right-6 z-50 bg-white shadow-2xl rounded-2xl px-5 py-3 flex items-center gap-3 border border-servimedia-border animate-in slide-in-from-bottom-4">
+          <div className="w-4 h-4 border-2 border-servimedia-pink border-t-transparent rounded-full animate-spin shrink-0" />
+          <p className="text-xs font-black text-servimedia-gray uppercase tracking-widest">Redactando teletipo...</p>
         </div>
       )}
 

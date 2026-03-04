@@ -513,12 +513,13 @@ Devuelve ÚNICAMENTE un JSON válido: { "headlines": ["titular1", "titular2", "t
 const generateTeletipoFromText = async (
   transcriptionText: string,
   topicContext: string,
-  selectedHeadline: string
+  selectedHeadline: string,
+  speakerContext?: string
 ): Promise<PressReleaseResult> => {
   const instructionText = `Eres el Redactor Jefe de la Agencia de noticias Servimedia. Tu misión es redactar un TELETIPO DE AGENCIA PERFECTO a partir de la transcripción adjunta.
 
 TITULAR OBLIGATORIO: Debes usar EXACTAMENTE este titular, sin modificarlo: "${selectedHeadline}"
-${topicContext ? `TEMA A DESARROLLAR: ${topicContext}\n` : ''}
+${topicContext ? `TEMA A DESARROLLAR: ${topicContext}\n` : ''}${speakerContext ? `CONTEXTO DE LOS HABLANTES (úsalo para identificar quién declara cada cosa y mencionarlo correctamente con cargo y nombre completo):\n${speakerContext}\n` : ''}
 NORMAS DE REDACCIÓN OBLIGATORIAS — aplícalas todas sin excepción:
 
 ORTOGRAFÍA Y PUNTUACIÓN
