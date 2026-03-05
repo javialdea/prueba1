@@ -7,7 +7,7 @@ import {
 import { supabase } from '../services/supabase';
 import {
     calculateAudioCost, calculatePressReleaseCost, calculateChatCost,
-    calculateMonthlyProjection, formatCurrency, GEMINI_3_PRO_PRICING, GEMINI_3_FLASH_PRICING
+    calculateMonthlyProjection, formatCurrency, GEMINI_2_5_PRO_PRICING, GEMINI_2_5_FLASH_PRICING
 } from '../utils/costCalculator';
 
 interface Profile {
@@ -418,15 +418,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                                         <tbody className="divide-y divide-servimedia-border">
                                             <tr className="hover:bg-servimedia-light/20 transition-colors">
                                                 <td className="px-4 py-4 font-black text-servimedia-gray">Gemini 2.5 Pro</td>
-                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_3_PRO_PRICING.paid.inputPrice)}</td>
-                                                <td className="px-4 py-4 text-servimedia-gray/40">—</td>
-                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_3_PRO_PRICING.paid.outputPrice)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_2_5_PRO_PRICING.paid.inputPrice)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_2_5_PRO_PRICING.paid.audioInputPrice || 0)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_2_5_PRO_PRICING.paid.outputPrice)}</td>
                                             </tr>
                                             <tr className="hover:bg-servimedia-light/20 transition-colors">
                                                 <td className="px-4 py-4 font-black text-servimedia-gray">Gemini 2.5 Flash</td>
-                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_3_FLASH_PRICING.paid.inputPrice)}</td>
-                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_3_FLASH_PRICING.paid.audioInputPrice || 0)}</td>
-                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_3_FLASH_PRICING.paid.outputPrice)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_2_5_FLASH_PRICING.paid.inputPrice)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_2_5_FLASH_PRICING.paid.audioInputPrice || 0)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_2_5_FLASH_PRICING.paid.outputPrice)}</td>
                                             </tr>
                                         </tbody>
                                     </table>

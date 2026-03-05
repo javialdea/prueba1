@@ -1,11 +1,12 @@
 // Gemini API Pricing Calculator
-// Based on official pricing as of February 2026
+// Based on official GCP billing account prices (EUR) — March 2026
+// Source: Cuenta de facturación GCP — "Precio de Mi cuenta de facturación 1.csv"
 
 export interface PricingTier {
-    inputPrice: number;  // per 1M tokens
-    outputPrice: number; // per 1M tokens
-    audioInputPrice?: number; // per 1M tokens (for audio-specific pricing)
-    searchPrice?: number; // per 1,000 queries
+    inputPrice: number;         // € per 1M input tokens (text)
+    outputPrice: number;        // € per 1M output tokens
+    audioInputPrice?: number;   // € per 1M audio input tokens (Flash: different from text)
+    searchPrice?: number;       // € per 1,000 search queries
 }
 
 export interface ModelPricing {
@@ -13,27 +14,35 @@ export interface ModelPricing {
     paid: PricingTier;
 }
 
-// Gemini 3 Pro Preview Pricing
-export const GEMINI_3_PRO_PRICING: ModelPricing = {
+// ─── Gemini 2.5 Flash ───────────────────────────────────────────────────────
+// App usage: chat, chatWithDocuments, chatWithSource, suggestHeadlinesForTopic
+// SKUs: 981A-C057-0BF9 (text in), 5308-F418-CF26 (audio in), 911A-8880-A243 (text out)
+export const GEMINI_2_5_FLASH_PRICING: ModelPricing = {
+    free: { inputPrice: 0, outputPrice: 0 }, // AI Studio free tier (not in billing account)
     paid: {
-        inputPrice: 2.00,      // $2.00 per 1M tokens (≤200k prompts)
-        outputPrice: 12.00,    // $12.00 per 1M tokens (≤200k prompts)
-        searchPrice: 14.00,    // $14 per 1,000 search queries (after 5,000 free/month)
+        inputPrice: 0.25446,       // €0.25446 / 1M text tokens
+        audioInputPrice: 0.8482,   // €0.8482 / 1M audio tokens
+        outputPrice: 2.1205,       // €2.1205 / 1M output tokens
     }
 };
 
-// Gemini 3 Flash Preview Pricing
-export const GEMINI_3_FLASH_PRICING: ModelPricing = {
-    free: {
-        inputPrice: 0,
-        outputPrice: 0,
-    },
+// ─── Gemini 2.5 Pro ─────────────────────────────────────────────────────────
+// App usage: processAudio, processPressRelease, generateTeletipoFromText, verifyManualSelection
+// Note: text, audio, and image inputs are all priced identically for this model
+// SKUs: 2D1C-F790-3C09 (text in), 9B07-44AD-2984 (audio in), 0F51-429B-C2DC (text out), A87C-47D2-C83A (search)
+export const GEMINI_2_5_PRO_PRICING: ModelPricing = {
     paid: {
-        inputPrice: 0.50,      // $0.50 per 1M tokens (text/image/video)
-        audioInputPrice: 1.00, // $1.00 per 1M tokens (audio)
-        outputPrice: 3.00,     // $3.00 per 1M tokens
+        inputPrice: 1.06025,       // €1.06025 / 1M tokens (text, audio, and image — same price)
+        audioInputPrice: 1.06025,  // €1.06025 / 1M audio tokens (same as text for 2.5 Pro)
+        outputPrice: 8.482,        // €8.482 / 1M output tokens
+        searchPrice: 29.687,       // €29.687 / 1K search queries (after 10,000 free/month)
     }
 };
+
+// Google Search Grounding: first 10,000 queries/month are free (SKU A87C-47D2-C83A)
+export const SEARCH_FREE_QUERIES_PER_MONTH = 10_000;
+
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface TokenEstimate {
     inputTokens: number;
@@ -49,12 +58,13 @@ export interface CostEstimate {
     tier: 'free' | 'paid';
 }
 
-// Token estimation functions
+// ─── Token Estimation Functions ─────────────────────────────────────────────
+
 export const estimateAudioTokens = (durationMinutes: number): TokenEstimate => {
-    // Rough estimate: 1 minute ≈ 1,500-2,000 tokens
-    const audioTokens = durationMinutes * 1750;
-    const promptTokens = 500; // System prompt
-    const outputTokens = durationMinutes * 600; // Transcription + analysis
+    // Gemini audio tokenization: ~32 tokens/second ≈ 1,920 tokens/minute
+    const audioTokens = durationMinutes * 1920;
+    const promptTokens = 500; // System prompt + instructions
+    const outputTokens = durationMinutes * 600; // Structured analysis JSON (scales with content)
 
     return {
         inputTokens: audioTokens + promptTokens,
@@ -63,10 +73,10 @@ export const estimateAudioTokens = (durationMinutes: number): TokenEstimate => {
 };
 
 export const estimatePressReleaseTokens = (documentSizeKB: number): TokenEstimate => {
-    // Rough estimate: 1KB ≈ 250 tokens
+    // ~250 tokens per KB of text content
     const documentTokens = documentSizeKB * 250;
-    const promptTokens = 300;
-    const outputTokens = 800; // Headline + lead + body
+    const promptTokens = 300; // System prompt
+    const outputTokens = 800; // Headline + lead + body JSON
 
     return {
         inputTokens: documentTokens + promptTokens,
@@ -74,11 +84,25 @@ export const estimatePressReleaseTokens = (documentSizeKB: number): TokenEstimat
     };
 };
 
+export const estimateTeletipoTokens = (durationMinutes: number): TokenEstimate => {
+    // Two-step process: Flash (headline suggestions) + Pro (full teletipo)
+    // Step 1 — Flash: topic text + portion of transcription → 3 short headlines
+    const flashInputTokens = 1_000 + durationMinutes * 100;
+    const flashOutputTokens = 200;
+    // Step 2 — Pro: full transcription text + selected headline + context → teletipo JSON
+    const proInputTokens = 600 + durationMinutes * 300;
+    const proOutputTokens = 900;
+
+    return {
+        inputTokens: flashInputTokens + proInputTokens,
+        outputTokens: flashOutputTokens + proOutputTokens,
+    };
+};
+
 export const estimateChatTokens = (messageLength: number, historyMessages: number): TokenEstimate => {
-    // Rough estimate: 1 character ≈ 0.25 tokens
-    const messageTokens = messageLength * 0.25;
-    const historyTokens = historyMessages * 150; // Average per message
-    const outputTokens = 200; // Average response
+    const messageTokens = messageLength * 0.25; // ~4 chars per token
+    const historyTokens = historyMessages * 150; // Average tokens per context message
+    const outputTokens = 200; // Average response length
 
     return {
         inputTokens: messageTokens + historyTokens,
@@ -88,13 +112,14 @@ export const estimateChatTokens = (messageLength: number, historyMessages: numbe
 
 export const estimateMadridSummaryTokens = (): TokenEstimate => {
     return {
-        inputTokens: 200,  // Prompt
-        outputTokens: 2500, // Summary JSON
-        searchQueries: 5,   // Approximate queries per summary
+        inputTokens: 200,
+        outputTokens: 2500,  // Full summary JSON
+        searchQueries: 5,    // Approximate Google Search queries per summary
     };
 };
 
-// Cost calculation functions
+// ─── Core Cost Calculator ────────────────────────────────────────────────────
+
 export const calculateCost = (
     tokens: TokenEstimate,
     pricing: PricingTier,
@@ -119,48 +144,84 @@ export const calculateCost = (
     };
 };
 
-// Specific operation cost calculators
+// ─── Operation-Specific Calculators ─────────────────────────────────────────
+
+// Audio analysis → Gemini 2.5 Pro (audio input pricing)
 export const calculateAudioCost = (durationMinutes: number, tier: 'free' | 'paid' = 'paid'): CostEstimate => {
     const tokens = estimateAudioTokens(durationMinutes);
-    const pricing = tier === 'free' && GEMINI_3_PRO_PRICING.free
-        ? GEMINI_3_PRO_PRICING.free
-        : GEMINI_3_PRO_PRICING.paid;
+    const pricing = tier === 'free' && GEMINI_2_5_PRO_PRICING.free
+        ? GEMINI_2_5_PRO_PRICING.free
+        : GEMINI_2_5_PRO_PRICING.paid;
     return calculateCost(tokens, pricing, true);
 };
 
+// Press release → Gemini 2.5 Pro (text input pricing)
 export const calculatePressReleaseCost = (documentSizeKB: number, tier: 'free' | 'paid' = 'paid'): CostEstimate => {
     const tokens = estimatePressReleaseTokens(documentSizeKB);
-    const pricing = tier === 'free' && GEMINI_3_PRO_PRICING.free
-        ? GEMINI_3_PRO_PRICING.free
-        : GEMINI_3_PRO_PRICING.paid;
+    const pricing = tier === 'free' && GEMINI_2_5_PRO_PRICING.free
+        ? GEMINI_2_5_PRO_PRICING.free
+        : GEMINI_2_5_PRO_PRICING.paid;
     return calculateCost(tokens, pricing);
 };
 
+// Teletipo → Flash (headline step) + Pro (generation step)
+export const calculateTeletipoCost = (durationMinutes: number, tier: 'free' | 'paid' = 'paid'): CostEstimate => {
+    // Step 1: Flash — suggest 3 headline options
+    const flashInputTokens = 1_000 + durationMinutes * 100;
+    const flashOutputTokens = 200;
+    const flashPricing = tier === 'free' && GEMINI_2_5_FLASH_PRICING.free
+        ? GEMINI_2_5_FLASH_PRICING.free
+        : GEMINI_2_5_FLASH_PRICING.paid;
+
+    // Step 2: Pro — generate full teletipo from selected headline
+    const proInputTokens = 600 + durationMinutes * 300;
+    const proOutputTokens = 900;
+    const proPricing = tier === 'free' && GEMINI_2_5_PRO_PRICING.free
+        ? GEMINI_2_5_PRO_PRICING.free
+        : GEMINI_2_5_PRO_PRICING.paid;
+
+    const flashInputCost = (flashInputTokens / 1_000_000) * flashPricing.inputPrice;
+    const flashOutputCost = (flashOutputTokens / 1_000_000) * flashPricing.outputPrice;
+    const proInputCost = (proInputTokens / 1_000_000) * proPricing.inputPrice;
+    const proOutputCost = (proOutputTokens / 1_000_000) * proPricing.outputPrice;
+
+    return {
+        inputCost: flashInputCost + proInputCost,
+        outputCost: flashOutputCost + proOutputCost,
+        totalCost: flashInputCost + flashOutputCost + proInputCost + proOutputCost,
+        tier,
+    };
+};
+
+// Chat → Gemini 2.5 Flash (text input pricing)
 export const calculateChatCost = (messageLength: number, historyMessages: number, tier: 'free' | 'paid' = 'paid'): CostEstimate => {
     const tokens = estimateChatTokens(messageLength, historyMessages);
-    const pricing = tier === 'free' && GEMINI_3_FLASH_PRICING.free
-        ? GEMINI_3_FLASH_PRICING.free
-        : GEMINI_3_FLASH_PRICING.paid;
+    const pricing = tier === 'free' && GEMINI_2_5_FLASH_PRICING.free
+        ? GEMINI_2_5_FLASH_PRICING.free
+        : GEMINI_2_5_FLASH_PRICING.paid;
     return calculateCost(tokens, pricing);
 };
 
+// Madrid summaries → Gemini 2.5 Pro + optional Search grounding
 export const calculateMadridSummaryCost = (tier: 'free' | 'paid' = 'paid', includingSearch: boolean = true): CostEstimate => {
     const tokens = estimateMadridSummaryTokens();
     if (!includingSearch) {
         delete tokens.searchQueries;
     }
-    const pricing = tier === 'free' && GEMINI_3_PRO_PRICING.free
-        ? GEMINI_3_PRO_PRICING.free
-        : GEMINI_3_PRO_PRICING.paid;
+    const pricing = tier === 'free' && GEMINI_2_5_PRO_PRICING.free
+        ? GEMINI_2_5_PRO_PRICING.free
+        : GEMINI_2_5_PRO_PRICING.paid;
     return calculateCost(tokens, pricing);
 };
 
-// Monthly projection calculator
+// ─── Monthly Projection ──────────────────────────────────────────────────────
+
 export interface MonthlyUsage {
     audioTranscriptions: number;
     pressReleases: number;
     chatMessages: number;
     madridSummaries: number;
+    teletipos?: number; // optional — generated from audio jobs
 }
 
 export const calculateMonthlyProjection = (
@@ -173,18 +234,21 @@ export const calculateMonthlyProjection = (
     const pressCost = calculatePressReleaseCost(avgDocumentSizeKB, tier);
     const chatCost = calculateChatCost(100, 5, tier);
     const summaryCost = calculateMadridSummaryCost(tier, tier === 'paid');
+    const teletipoCost = calculateTeletipoCost(avgAudioMinutes, tier);
 
     const totalInputCost =
         (audioCost.inputCost * usage.audioTranscriptions) +
         (pressCost.inputCost * usage.pressReleases) +
         (chatCost.inputCost * usage.chatMessages) +
-        (summaryCost.inputCost * usage.madridSummaries);
+        (summaryCost.inputCost * usage.madridSummaries) +
+        (teletipoCost.inputCost * (usage.teletipos || 0));
 
     const totalOutputCost =
         (audioCost.outputCost * usage.audioTranscriptions) +
         (pressCost.outputCost * usage.pressReleases) +
         (chatCost.outputCost * usage.chatMessages) +
-        (summaryCost.outputCost * usage.madridSummaries);
+        (summaryCost.outputCost * usage.madridSummaries) +
+        (teletipoCost.outputCost * (usage.teletipos || 0));
 
     const totalSearchCost = tier === 'paid'
         ? (summaryCost.searchCost || 0) * usage.madridSummaries
@@ -199,14 +263,14 @@ export const calculateMonthlyProjection = (
     };
 };
 
-// Format currency (converted from USD to EUR)
-const USD_TO_EUR = 0.92; // Approximate conversion rate
+// ─── Currency Formatting ─────────────────────────────────────────────────────
+// All prices are already in EUR — no conversion needed
 
-export const formatCurrency = (amountUSD: number): string => {
+export const formatCurrency = (amountEUR: number): string => {
     return new Intl.NumberFormat('es-ES', {
         style: 'currency',
         currency: 'EUR',
         minimumFractionDigits: 2,
         maximumFractionDigits: 4,
-    }).format(amountUSD * USD_TO_EUR);
+    }).format(amountEUR);
 };
