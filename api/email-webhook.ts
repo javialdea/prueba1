@@ -72,8 +72,28 @@ async function extractWordText(base64Data: string): Promise<string | null> {
     }
 }
 
+// ─── Helpers para limpiar el cuerpo del email ────────────────────────────────
+
+/**
+ * Strips email forwarding headers (De:, Para:, Fecha:, Asunto:, ----...)
+ * and returns only the actual press release body text.
+ */
+function cleanEmailBody(raw: string): string {
+    // Remove common forwarding separator lines
+    const separatorPattern = /(-{3,}.*?(mensaje original|forwarded message|original message).*?-{3,})/gi;
+    let cleaned = raw.replace(separatorPattern, '\n');
+
+    // Remove email header fields at the start of forwarded blocks
+    cleaned = cleaned.replace(/^(De|From|Para|To|Fecha|Date|Enviado|Sent|Asunto|Subject|CC|BCC)\s*:.*$/gim, '');
+
+    // Collapse multiple blank lines into at most two
+    cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
+    return cleaned.trim();
+}
+
 // ─── Gemini Call 1: Nota de Prensa ───────────────────────────────────────────
-// Prompt is the exact same as processPressRelease in geminiService.ts
+// Prompt is IDENTICAL to processPressRelease in geminiService.ts
 
 const PRESS_RELEASE_INSTRUCTION = `
 Eres el Redactor Jefe de la Agencia de noticias Servimedia. Tu misión es transformar el material adjunto en un TELETIPO DE AGENCIA PERFECTO, siguiendo con absoluta precisión las normas del periodismo de agencia en español.
@@ -269,14 +289,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // ── Build Gemini content parts ────────────────────────────────────
         let contentParts: any[] = [];
+        const attachmentCount = payload.attachments?.length ?? 0;
+        console.log(`[email-webhook] Attachments received: ${attachmentCount}`);
 
-        if (payload.attachments && payload.attachments.length > 0) {
-            const att = payload.attachments[0]; // Only process first PDF/Word attachment
+        if (attachmentCount > 0) {
+            const att = payload.attachments![0]; // Only process first PDF/Word attachment
+            console.log(`[email-webhook] Processing attachment: ${att.filename} (${att.mimeType})`);
 
             if (isWord(att.mimeType, att.filename)) {
                 const text = await extractWordText(att.base64Data);
                 if (text) {
-                    contentParts.push({ text: `TEXTO WORD EXTRAÍDO (${att.filename}):\n${text}` });
+                    contentParts.push({ text: `NOTA DE PRENSA (extraída de Word - ${att.filename}):\n${text}` });
                 } else {
                     console.warn('[email-webhook] mammoth returned empty — falling back to inlineData');
                     contentParts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } });
@@ -284,11 +307,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             } else if (isPdf(att.mimeType)) {
                 contentParts.push({ inlineData: { mimeType: 'application/pdf', data: att.base64Data } });
             } else {
-                // Unknown type — use email body as fallback
-                contentParts.push({ text: `CONTENIDO DEL EMAIL:\n${payload.body}` });
+                // Unknown attachment type — clean and use email body
+                const cleanBody = cleanEmailBody(payload.body);
+                contentParts.push({ text: `NOTA DE PRENSA (extraída del cuerpo del email):\n${cleanBody}` });
             }
         } else {
-            contentParts.push({ text: `CONTENIDO DEL EMAIL:\n${payload.body}` });
+            // No attachment — clean the email body removing forwarding headers
+            const cleanBody = cleanEmailBody(payload.body);
+            console.log(`[email-webhook] No attachment found. Using cleaned email body (${cleanBody.length} chars)`);
+            contentParts.push({
+                text: `NOTA DE PRENSA (extraída del cuerpo del email — ignora cualquier cabecera de reenvío como De:, Para:, Fecha: y céntrate exclusivamente en el contenido de la nota de prensa):\n${cleanBody}`
+            });
         }
 
         // ── Call 1: generate press release ───────────────────────────────
