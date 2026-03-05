@@ -21,6 +21,7 @@ interface Profile {
 interface AdminPortalProps {
     isOpen: boolean;
     onClose: () => void;
+    onOpenCostEstimator?: () => void;
 }
 
 interface CostData {
@@ -34,7 +35,7 @@ interface CostData {
     avgDocSizeKB: number;
 }
 
-export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => {
+export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onOpenCostEstimator }) => {
     const [activeTab, setActiveTab] = useState<'users' | 'stats' | 'config' | 'costs'>('users');
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [loading, setLoading] = useState(true);
@@ -331,6 +332,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose }) => 
                         </div>
                     ) : activeTab === 'costs' ? (
                         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                            {/* Cost Estimator shortcut */}
+                            {onOpenCostEstimator && (
+                                <button
+                                    onClick={onOpenCostEstimator}
+                                    className="w-full flex items-center justify-between px-6 py-4 bg-green-50 border border-green-200 rounded-2xl hover:bg-green-100 transition-colors group"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <DollarSign className="w-5 h-5 text-green-600" />
+                                        <div className="text-left">
+                                            <p className="text-xs font-black text-green-700 uppercase tracking-widest">Estimador de Costes Detallado</p>
+                                            <p className="text-[9px] text-green-600/60 font-bold uppercase tracking-wider mt-0.5">Calcula proyecciones por operación · Precios reales GCP</p>
+                                        </div>
+                                    </div>
+                                    <Zap className="w-4 h-4 text-green-500 group-hover:scale-110 transition-transform" />
+                                </button>
+                            )}
                             {/* Total Cost Banner */}
                             <div className="bg-gradient-to-br from-servimedia-gray to-black rounded-3xl p-8 text-white relative overflow-hidden">
                                 <div className="absolute top-0 right-0 w-64 h-64 bg-servimedia-pink/10 blur-3xl rounded-full -translate-y-1/2 translate-x-1/4" />

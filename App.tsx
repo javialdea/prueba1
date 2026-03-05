@@ -14,6 +14,7 @@ import { LandingPage } from './components/LandingPage';
 import { AuthModal } from './components/AuthModal';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { AdminPortal } from './components/AdminPortal';
+import { CostEstimator } from './components/CostEstimator';
 
 import { supabase } from './services/supabase';
 import { AppStatus, FileState, AnalysisResult as AnalysisResultType, PressReleaseResult as PressReleaseResultType, AppMode, HistoryItem, TranscriptionJob, PressReleaseJob } from './types';
@@ -27,6 +28,7 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
+  const [isCostEstimatorOpen, setIsCostEstimatorOpen] = useState(false);
   const [currentRoute, setCurrentRoute] = useState(window.location.hash);
   const [userAngle, setUserAngle] = useState('');
 
@@ -243,7 +245,8 @@ const App: React.FC = () => {
         isAdmin={isAdmin}
       />
 
-      <AdminPortal isOpen={isAdminPortalOpen} onClose={() => setIsAdminPortalOpen(false)} />
+      <AdminPortal isOpen={isAdminPortalOpen} onClose={() => setIsAdminPortalOpen(false)} onOpenCostEstimator={() => setIsCostEstimatorOpen(true)} />
+      <CostEstimator isOpen={isCostEstimatorOpen} onClose={() => setIsCostEstimatorOpen(false)} />
 
       <HistoryDrawer
         isOpen={isHistoryOpen}
