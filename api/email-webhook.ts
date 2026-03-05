@@ -289,35 +289,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // ── Build Gemini content parts ────────────────────────────────────
         let contentParts: any[] = [];
+        let contentSource = 'cuerpo del email'; // for debug display in the response email
         const attachmentCount = payload.attachments?.length ?? 0;
         console.log(`[email-webhook] Attachments received: ${attachmentCount}`);
 
         if (attachmentCount > 0) {
-            const att = payload.attachments![0]; // Only process first PDF/Word attachment
+            const att = payload.attachments![0];
             console.log(`[email-webhook] Processing attachment: ${att.filename} (${att.mimeType})`);
+            contentSource = att.filename;
 
             if (isWord(att.mimeType, att.filename)) {
+                // Exact same label as geminiService.ts processPressRelease
                 const text = await extractWordText(att.base64Data);
                 if (text) {
-                    contentParts.push({ text: `NOTA DE PRENSA (extraída de Word - ${att.filename}):\n${text}` });
+                    contentParts.push({ text: `TEXTO WORD EXTRAÍDO:\n${text}` });
                 } else {
-                    console.warn('[email-webhook] mammoth returned empty — falling back to inlineData');
+                    console.warn('[email-webhook] mammoth returned empty — sending as inlineData');
                     contentParts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } });
                 }
             } else if (isPdf(att.mimeType)) {
                 contentParts.push({ inlineData: { mimeType: 'application/pdf', data: att.base64Data } });
+            } else if (att.filename.match(/\.(doc|docx|pdf)$/i)) {
+                // Catch attachments with wrong MIME type (e.g. application/octet-stream) but correct extension
+                if (att.filename.match(/\.(doc|docx)$/i)) {
+                    const text = await extractWordText(att.base64Data);
+                    if (text) {
+                        contentParts.push({ text: `TEXTO WORD EXTRAÍDO:\n${text}` });
+                    } else {
+                        contentParts.push({ inlineData: { mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data: att.base64Data } });
+                    }
+                } else {
+                    contentParts.push({ inlineData: { mimeType: 'application/pdf', data: att.base64Data } });
+                }
             } else {
-                // Unknown attachment type — clean and use email body
+                // Unrecognised type — fall back to cleaned email body
+                contentSource = 'cuerpo del email (adjunto no reconocido)';
                 const cleanBody = cleanEmailBody(payload.body);
-                contentParts.push({ text: `NOTA DE PRENSA (extraída del cuerpo del email):\n${cleanBody}` });
+                console.warn(`[email-webhook] Unrecognised attachment type ${att.mimeType} — falling back to body`);
+                contentParts.push({ text: `TEXTO NOTA DE PRENSA:\n${cleanBody}` });
             }
         } else {
-            // No attachment — clean the email body removing forwarding headers
+            // No attachment: clean the email body stripping forwarding headers
             const cleanBody = cleanEmailBody(payload.body);
-            console.log(`[email-webhook] No attachment found. Using cleaned email body (${cleanBody.length} chars)`);
-            contentParts.push({
-                text: `NOTA DE PRENSA (extraída del cuerpo del email — ignora cualquier cabecera de reenvío como De:, Para:, Fecha: y céntrate exclusivamente en el contenido de la nota de prensa):\n${cleanBody}`
-            });
+            console.log(`[email-webhook] No attachment. Cleaned body: ${cleanBody.length} chars`);
+            contentParts.push({ text: `TEXTO NOTA DE PRENSA:\n${cleanBody}` });
         }
 
         // ── Call 1: generate press release ───────────────────────────────
@@ -335,6 +350,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             ok: true,
             pressRelease,
             fidelity,
+            contentSource, // filename of attachment used, or 'cuerpo del email'
         });
 
     } catch (err: any) {
