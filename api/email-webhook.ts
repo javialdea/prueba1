@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI, Type } from '@google/genai';
-import * as mammoth from 'mammoth';
+import mammoth from 'mammoth';
 
 // Vercel: allow up to 60 s (Hobby plan max) for the two Gemini Pro calls
 export const config = { maxDuration: 60, bodyParser: { sizeLimit: '50mb' } };
@@ -64,8 +64,9 @@ function isPdf(mimeType: string): boolean {
 
 async function extractWordText(base64Data: string): Promise<string | null> {
     try {
-        const buf = Buffer.from(base64Data, 'base64');
-        const result = await mammoth.extractRawText({ buffer: buf });
+        // Exactly the same as geminiService.ts processPressRelease
+        const arrayBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0)).buffer;
+        const result = await mammoth.extractRawText({ arrayBuffer });
         return result.value?.trim() || null;
     } catch {
         return null;
