@@ -64,11 +64,16 @@ function isPdf(mimeType: string): boolean {
 
 async function extractWordText(base64Data: string): Promise<string | null> {
     try {
-        // Exactly the same as geminiService.ts processPressRelease
-        const arrayBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0)).buffer;
-        const result = await mammoth.extractRawText({ arrayBuffer });
-        return result.value?.trim() || null;
-    } catch {
+        // Node.js server: Buffer.from handles base64 WITH line breaks (from Apps Script).
+        // Unlike atob(), Buffer.from ignores whitespace/newlines in base64 — critical here.
+        // mammoth on Node.js expects { buffer: Buffer }, not { arrayBuffer }.
+        const buf = Buffer.from(base64Data, 'base64');
+        const result = await mammoth.extractRawText({ buffer: buf });
+        const text = result.value?.trim() || null;
+        console.log(`[email-webhook] mammoth extracted ${text?.length ?? 0} chars`);
+        return text;
+    } catch (err: any) {
+        console.error('[email-webhook] mammoth extraction failed:', err.message);
         return null;
     }
 }
