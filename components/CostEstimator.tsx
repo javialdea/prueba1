@@ -44,7 +44,8 @@ export const CostEstimator: React.FC<CostEstimatorProps> = ({ isOpen, onClose })
     const projection = calculateMonthlyProjection(monthlyUsage, 'paid', avgAudioMinutes, avgDocumentSizeKB);
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300 overflow-y-auto">
+        <div className="fixed inset-0 z-[300] overflow-y-auto bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="flex min-h-full items-center justify-center p-4">
             <div className="bg-white w-full max-w-5xl rounded-[2.5rem] shadow-2xl overflow-hidden border border-servimedia-border animate-in zoom-in-95 duration-300 my-8">
                 <div className="p-8 border-b border-servimedia-light flex items-center justify-between bg-gradient-to-r from-green-50 to-emerald-50">
                     <div className="flex items-center gap-4">
@@ -300,6 +301,7 @@ export const CostEstimator: React.FC<CostEstimatorProps> = ({ isOpen, onClose })
                     <p className="text-[9px] font-black text-servimedia-gray/20 uppercase tracking-[0.4em]">Servimedia IA · Estimaciones basadas en precios reales de facturación GCP</p>
                 </div>
             </div>
+        </div>
         </div>
     );
 };
