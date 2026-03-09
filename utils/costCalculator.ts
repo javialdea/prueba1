@@ -193,6 +193,34 @@ export const calculateTeletipoCost = (durationMinutes: number, tier: 'free' | 'p
     };
 };
 
+// Email pipeline → Gemini 2.5 Pro (nota) + Gemini 2.5 Flash (fidelity report)
+// Call 1: 2.5 Pro — nota de agencia JSON
+// Call 2: 2.5 Flash — informe de fidelidad JSON
+export const calculateEmailPipelineCost = (documentSizeKB: number, tier: 'free' | 'paid' = 'paid'): CostEstimate => {
+    const proPricing = GEMINI_2_5_PRO_PRICING.paid;
+    const flashPricing = GEMINI_2_5_FLASH_PRICING.paid;
+
+    // Pro: document tokens + large system prompt (~1200 tokens)
+    const proInputTokens = documentSizeKB * 250 + 1200;
+    const proOutputTokens = 800; // JSON nota
+
+    // Flash: original text + generated nota + short prompt
+    const flashInputTokens = documentSizeKB * 250 + proOutputTokens + 500;
+    const flashOutputTokens = 500; // JSON fidelity report
+
+    const proInputCost = (proInputTokens / 1_000_000) * proPricing.inputPrice;
+    const proOutputCost = (proOutputTokens / 1_000_000) * proPricing.outputPrice;
+    const flashInputCost = (flashInputTokens / 1_000_000) * flashPricing.inputPrice;
+    const flashOutputCost = (flashOutputTokens / 1_000_000) * flashPricing.outputPrice;
+
+    return {
+        inputCost: proInputCost + flashInputCost,
+        outputCost: proOutputCost + flashOutputCost,
+        totalCost: proInputCost + proOutputCost + flashInputCost + flashOutputCost,
+        tier,
+    };
+};
+
 // Chat → Gemini 2.5 Flash (text input pricing)
 export const calculateChatCost = (messageLength: number, historyMessages: number, tier: 'free' | 'paid' = 'paid'): CostEstimate => {
     const tokens = estimateChatTokens(messageLength, historyMessages);
@@ -221,7 +249,8 @@ export interface MonthlyUsage {
     pressReleases: number;
     chatMessages: number;
     madridSummaries: number;
-    teletipos?: number; // optional — generated from audio jobs
+    teletipos?: number;        // optional — generated from audio jobs
+    emailsRecibidos?: number;  // optional — email pipeline (NdP via Gmail)
 }
 
 export const calculateMonthlyProjection = (
@@ -235,20 +264,23 @@ export const calculateMonthlyProjection = (
     const chatCost = calculateChatCost(100, 5, tier);
     const summaryCost = calculateMadridSummaryCost(tier, tier === 'paid');
     const teletipoCost = calculateTeletipoCost(avgAudioMinutes, tier);
+    const emailCost = calculateEmailPipelineCost(avgDocumentSizeKB, tier);
 
     const totalInputCost =
         (audioCost.inputCost * usage.audioTranscriptions) +
         (pressCost.inputCost * usage.pressReleases) +
         (chatCost.inputCost * usage.chatMessages) +
         (summaryCost.inputCost * usage.madridSummaries) +
-        (teletipoCost.inputCost * (usage.teletipos || 0));
+        (teletipoCost.inputCost * (usage.teletipos || 0)) +
+        (emailCost.inputCost * (usage.emailsRecibidos || 0));
 
     const totalOutputCost =
         (audioCost.outputCost * usage.audioTranscriptions) +
         (pressCost.outputCost * usage.pressReleases) +
         (chatCost.outputCost * usage.chatMessages) +
         (summaryCost.outputCost * usage.madridSummaries) +
-        (teletipoCost.outputCost * (usage.teletipos || 0));
+        (teletipoCost.outputCost * (usage.teletipos || 0)) +
+        (emailCost.outputCost * (usage.emailsRecibidos || 0));
 
     const totalSearchCost = tier === 'paid'
         ? (summaryCost.searchCost || 0) * usage.madridSummaries

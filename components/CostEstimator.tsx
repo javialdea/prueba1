@@ -1,12 +1,13 @@
 
 import React, { useState } from 'react';
-import { X, Euro, TrendingUp, Calculator, Info, Zap, Mic, FileText, MessageSquare, Newspaper, MapPin } from 'lucide-react';
+import { X, Euro, TrendingUp, Calculator, Info, Zap, Mic, FileText, MessageSquare, Newspaper, MapPin, Mail } from 'lucide-react';
 import {
     calculateAudioCost,
     calculatePressReleaseCost,
     calculateTeletipoCost,
     calculateChatCost,
     calculateMadridSummaryCost,
+    calculateEmailPipelineCost,
     calculateMonthlyProjection,
     formatCurrency,
     GEMINI_2_5_PRO_PRICING,
@@ -26,6 +27,7 @@ export const CostEstimator: React.FC<CostEstimatorProps> = ({ isOpen, onClose })
         chatMessages: 500,
         madridSummaries: 30,
         teletipos: 50,
+        emailsRecibidos: 100,
     });
 
     const [avgAudioMinutes, setAvgAudioMinutes] = useState(5);
@@ -39,6 +41,7 @@ export const CostEstimator: React.FC<CostEstimatorProps> = ({ isOpen, onClose })
     const singleTeletipoCost = calculateTeletipoCost(avgAudioMinutes, 'paid');
     const singleChatCost = calculateChatCost(100, 5, 'paid');
     const singleSummaryCost = calculateMadridSummaryCost('paid', true);
+    const singleEmailCost = calculateEmailPipelineCost(avgDocumentSizeKB, 'paid');
 
     // Calculate monthly projection (paid tier only — app runs on GCP billing account)
     const projection = calculateMonthlyProjection(monthlyUsage, 'paid', avgAudioMinutes, avgDocumentSizeKB);
@@ -67,7 +70,7 @@ export const CostEstimator: React.FC<CostEstimatorProps> = ({ isOpen, onClose })
                     {/* Quick Reference Cards */}
                     <div>
                         <p className="text-[9px] font-black uppercase tracking-[0.35em] text-servimedia-gray/30 mb-4">Coste por operación (cuenta de facturación)</p>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                             <div className="p-5 bg-servimedia-pink/5 rounded-2xl border border-servimedia-pink/10">
                                 <div className="flex items-center gap-2 mb-3">
                                     <Mic className="w-4 h-4 text-servimedia-pink" />
@@ -111,6 +114,15 @@ export const CostEstimator: React.FC<CostEstimatorProps> = ({ isOpen, onClose })
                                 </div>
                                 <p className="text-xl font-black text-servimedia-gray">{formatCurrency(singleSummaryCost.totalCost)}</p>
                                 <p className="text-[8px] text-servimedia-gray/40 mt-1 font-bold uppercase tracking-wider">por resumen · Pro+Search</p>
+                            </div>
+
+                            <div className="p-5 bg-green-600/5 rounded-2xl border border-green-600/15">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Mail className="w-4 h-4 text-green-600" />
+                                    <h3 className="text-[9px] font-black text-green-600 uppercase tracking-widest">Email NdP</h3>
+                                </div>
+                                <p className="text-xl font-black text-servimedia-gray">{formatCurrency(singleEmailCost.totalCost)}</p>
+                                <p className="text-[8px] text-servimedia-gray/40 mt-1 font-bold uppercase tracking-wider">{avgDocumentSizeKB} KB · Pro+Flash</p>
                             </div>
                         </div>
                     </div>
@@ -194,6 +206,18 @@ export const CostEstimator: React.FC<CostEstimatorProps> = ({ isOpen, onClose })
                                     className="w-full p-4 bg-white border-none rounded-2xl focus:ring-4 focus:ring-servimedia-gray/10 outline-none font-sans transition-all text-lg"
                                 />
                             </div>
+
+                            <div>
+                                <label className="text-[10px] font-black text-servimedia-gray/40 uppercase tracking-[0.3em] block mb-2 ml-2">
+                                    Emails NdP Recibidos/Mes
+                                </label>
+                                <input
+                                    type="number"
+                                    value={monthlyUsage.emailsRecibidos || 0}
+                                    onChange={(e) => setMonthlyUsage({ ...monthlyUsage, emailsRecibidos: parseInt(e.target.value) || 0 })}
+                                    className="w-full p-4 bg-white border-none rounded-2xl focus:ring-4 focus:ring-green-600/10 outline-none font-sans transition-all text-lg"
+                                />
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -268,7 +292,7 @@ export const CostEstimator: React.FC<CostEstimatorProps> = ({ isOpen, onClose })
                                     </tr>
                                     <tr className="hover:bg-servimedia-light/20 transition-colors">
                                         <td className="px-5 py-4 font-black text-servimedia-gray">Gemini 2.5 Flash</td>
-                                        <td className="px-5 py-4 text-servimedia-gray/50 text-[10px]">Chat · Titulares · Verificación rápida</td>
+                                        <td className="px-5 py-4 text-servimedia-gray/50 text-[10px]">Chat · Titulares · Informe fidelidad email</td>
                                         <td className="px-5 py-4 font-bold text-servimedia-gray">{formatCurrency(GEMINI_2_5_FLASH_PRICING.paid.inputPrice)}</td>
                                         <td className="px-5 py-4 font-bold text-servimedia-gray">{formatCurrency(GEMINI_2_5_FLASH_PRICING.paid.audioInputPrice || 0)}</td>
                                         <td className="px-5 py-4 font-bold text-servimedia-gray">{formatCurrency(GEMINI_2_5_FLASH_PRICING.paid.outputPrice)}</td>
