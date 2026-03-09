@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI, Type } from '@google/genai';
 import mammoth from 'mammoth';
 
-// Vercel: allow up to 60 s (Hobby plan max) for the two Gemini Pro calls
+// Vercel: 60 s es más que suficiente con gemini-2.0-flash-001 (~10-20 s de proceso total)
 export const config = { maxDuration: 60, bodyParser: { sizeLimit: '50mb' } };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -45,8 +45,8 @@ interface FidelityReport {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const GEMINI_MODEL = 'gemini-2.5-pro';
-const GEMINI_MODEL_FLASH = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-2.0-flash-001';        // rápido y preciso para teletype estructurado
+const GEMINI_MODEL_FLASH = 'gemini-2.0-flash-001';  // fidelidad: mismo modelo, ya es muy bueno
 const GEMINI_LOCATION = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
