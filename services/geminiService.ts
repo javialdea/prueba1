@@ -563,7 +563,7 @@ DEBES DEVOLVER UN JSON VÁLIDO CON LOS SIGUIENTES CAMPOS:
 
   return await retryOperation(async () => {
     const response = await (await getAI()).models.generateContent({
-      model: DEFAULT_MODELS.PRO,
+      model: DEFAULT_MODELS.FLASH,
       contents: {
         parts: [
           { text: `TRANSCRIPCIÓN FUENTE:\n${transcriptionText}` },

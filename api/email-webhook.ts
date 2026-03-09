@@ -46,6 +46,8 @@ interface FidelityReport {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const GEMINI_MODEL = 'gemini-2.5-pro';
+const GEMINI_MODEL_FLASH = 'gemini-2.5-flash';
+const GEMINI_LOCATION = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -184,6 +186,7 @@ async function generatePressRelease(ai: GoogleGenAI, contentParts: any[]): Promi
             },
         },
     });
+    console.log(`[tokens:press-release] in=${response.usageMetadata?.promptTokenCount} out=${response.usageMetadata?.candidatesTokenCount}`);
     const p = JSON.parse(response.text || '{}');
     return {
         antetitulo: p.antetitulo || '',
@@ -236,7 +239,7 @@ verdict: "Fiel" si score≥85, "Aceptable" si 60-84, "Problemático" si <60.
 Devuelve exclusivamente JSON válido.`;
 
     const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
+        model: GEMINI_MODEL_FLASH,
         contents: { parts: [{ text: prompt }] },
         config: {
             responseMimeType: 'application/json',
@@ -264,6 +267,7 @@ Devuelve exclusivamente JSON válido.`;
             },
         },
     });
+    console.log(`[tokens:fidelity] in=${response.usageMetadata?.promptTokenCount} out=${response.usageMetadata?.candidatesTokenCount}`);
     return JSON.parse(response.text || '{}') as FidelityReport;
 }
 
@@ -282,16 +286,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const geminiApiKey = process.env.GEMINI_API_KEY;
-    if (!geminiApiKey) {
-        return res.status(503).json({ error: 'GEMINI_API_KEY not configured' });
+    // Validate required Vertex AI env vars
+    const gcpProject = process.env.GOOGLE_CLOUD_PROJECT;
+    const gcpCredentialsBase64 = process.env.GCP_SERVICE_ACCOUNT_JSON_BASE64;
+    if (!gcpProject || !gcpCredentialsBase64) {
+        return res.status(503).json({ error: 'Missing GOOGLE_CLOUD_PROJECT or GCP_SERVICE_ACCOUNT_JSON_BASE64 env vars' });
     }
     if (!payload.subject || typeof payload.body !== 'string') {
         return res.status(400).json({ error: 'Missing subject or body' });
     }
 
     try {
-        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+        // Decode service account credentials from base64 env var
+        const credentials = JSON.parse(
+            Buffer.from(gcpCredentialsBase64, 'base64').toString('utf-8')
+        );
+        const ai = new GoogleGenAI({
+            vertexai: true,
+            project: gcpProject,
+            location: GEMINI_LOCATION,
+            googleAuthOptions: { credentials },
+        });
 
         // ── Build Gemini content parts ────────────────────────────────────
         let contentParts: any[] = [];
