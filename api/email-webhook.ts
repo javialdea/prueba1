@@ -168,7 +168,7 @@ async function generatePressRelease(ai: GoogleGenAI, contentParts: any[]): Promi
     const parts = [...contentParts, { text: PRESS_RELEASE_INSTRUCTION }];
     const response = await ai.models.generateContent({
         model: GEMINI_MODEL,
-        contents: { parts },
+        contents: [{ role: 'user', parts }],
         config: {
             responseMimeType: 'application/json',
             temperature: 0.1,
@@ -240,7 +240,7 @@ Devuelve exclusivamente JSON válido.`;
 
     const response = await ai.models.generateContent({
         model: GEMINI_MODEL_FLASH,
-        contents: { parts: [{ text: prompt }] },
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
         config: {
             responseMimeType: 'application/json',
             temperature: 0.1,
