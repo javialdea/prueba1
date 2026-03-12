@@ -5,6 +5,9 @@ import mammoth from 'mammoth';
 // Vercel: 60 s es más que suficiente con gemini-2.0-flash-001 (~10-20 s de proceso total)
 export const config = { maxDuration: 60, bodyParser: { sizeLimit: '50mb' } };
 
+export { processEmailContent };
+export type { EmailWebhookPayload, ProcessEmailResult };
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface AttachmentPayload {
@@ -14,11 +17,18 @@ interface AttachmentPayload {
 }
 
 interface EmailWebhookPayload {
-    secret: string;
+    secret?: string;         // optional when called internally (already validated upstream)
     subject: string;
     from: string;
     body: string;           // plain-text body of the forwarded email
     attachments?: AttachmentPayload[];
+}
+
+interface ProcessEmailResult {
+    ok: boolean;
+    pressRelease: PressReleaseResult;
+    fidelity: FidelityReport;
+    contentSource: string;
 }
 
 interface PressReleaseResult {
@@ -271,14 +281,90 @@ Devuelve exclusivamente JSON válido.`;
     return JSON.parse(response.text || '{}') as FidelityReport;
 }
 
-// ─── Main Handler ─────────────────────────────────────────────────────────────
+// ─── Shared Processing Logic (also used by gmail-pubsub.ts) ──────────────────
+
+async function processEmailContent(payload: EmailWebhookPayload): Promise<ProcessEmailResult> {
+    const gcpProject = process.env.GOOGLE_CLOUD_PROJECT;
+    const gcpCredentialsBase64 = process.env.GCP_SERVICE_ACCOUNT_JSON_BASE64;
+    if (!gcpProject || !gcpCredentialsBase64) {
+        throw new Error('Missing GOOGLE_CLOUD_PROJECT or GCP_SERVICE_ACCOUNT_JSON_BASE64 env vars');
+    }
+
+    const credentials = JSON.parse(
+        Buffer.from(gcpCredentialsBase64, 'base64').toString('utf-8')
+    );
+    const ai = new GoogleGenAI({
+        vertexai: true,
+        project: gcpProject,
+        location: GEMINI_LOCATION,
+        googleAuthOptions: { credentials },
+    });
+
+    // ── Build Gemini content parts ────────────────────────────────────────────
+    let contentParts: any[] = [];
+    let contentSource = 'cuerpo del email';
+    const attachmentCount = payload.attachments?.length ?? 0;
+    console.log(`[email-webhook] Attachments received: ${attachmentCount}`);
+
+    if (attachmentCount > 0) {
+        const att = payload.attachments![0];
+        console.log(`[email-webhook] Processing attachment: ${att.filename} (${att.mimeType})`);
+        contentSource = att.filename;
+
+        if (isWord(att.mimeType, att.filename)) {
+            const text = await extractWordText(att.base64Data);
+            if (text) {
+                contentParts.push({ text: `TEXTO WORD EXTRAÍDO:\n${text}` });
+            } else {
+                console.warn('[email-webhook] mammoth returned empty — sending as inlineData');
+                contentParts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } });
+            }
+        } else if (isPdf(att.mimeType)) {
+            contentParts.push({ inlineData: { mimeType: 'application/pdf', data: att.base64Data } });
+        } else if (att.filename.match(/\.(doc|docx|pdf)$/i)) {
+            if (att.filename.match(/\.(doc|docx)$/i)) {
+                const text = await extractWordText(att.base64Data);
+                if (text) {
+                    contentParts.push({ text: `TEXTO WORD EXTRAÍDO:\n${text}` });
+                } else {
+                    contentParts.push({ inlineData: { mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data: att.base64Data } });
+                }
+            } else {
+                contentParts.push({ inlineData: { mimeType: 'application/pdf', data: att.base64Data } });
+            }
+        } else {
+            contentSource = 'cuerpo del email (adjunto no reconocido)';
+            const cleanBody = cleanEmailBody(payload.body);
+            console.warn(`[email-webhook] Unrecognised attachment type ${att.mimeType} — falling back to body`);
+            contentParts.push({ text: `TEXTO NOTA DE PRENSA:\n${cleanBody}` });
+        }
+    } else {
+        const cleanBody = cleanEmailBody(payload.body);
+        console.log(`[email-webhook] No attachment. Cleaned body: ${cleanBody.length} chars`);
+        contentParts.push({ text: `TEXTO NOTA DE PRENSA:\n${cleanBody}` });
+    }
+
+    // ── Call 1: generate press release ───────────────────────────────────────
+    console.log('[email-webhook] Generating nota de prensa...');
+    const pressRelease = await generatePressRelease(ai, contentParts);
+
+    // ── Call 2: fidelity report ───────────────────────────────────────────────
+    console.log('[email-webhook] Generating fidelity report...');
+    const originalForFidelity = pressRelease.originalText || payload.body;
+    const fidelity = await generateFidelityReport(ai, originalForFidelity, pressRelease);
+
+    console.log(`[email-webhook] Done. Verdict: ${fidelity.verdict} (${fidelity.fidelityScore}/100)`);
+
+    return { ok: true, pressRelease, fidelity, contentSource };
+}
+
+// ─── HTTP Handler (called by Apps Script / manual webhook) ────────────────────
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    // Validate secret
     const payload = req.body as EmailWebhookPayload;
     const expectedSecret = process.env.EMAIL_WEBHOOK_SECRET;
     if (!expectedSecret || payload?.secret !== expectedSecret) {
@@ -286,94 +372,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Validate required Vertex AI env vars
-    const gcpProject = process.env.GOOGLE_CLOUD_PROJECT;
-    const gcpCredentialsBase64 = process.env.GCP_SERVICE_ACCOUNT_JSON_BASE64;
-    if (!gcpProject || !gcpCredentialsBase64) {
-        return res.status(503).json({ error: 'Missing GOOGLE_CLOUD_PROJECT or GCP_SERVICE_ACCOUNT_JSON_BASE64 env vars' });
-    }
     if (!payload.subject || typeof payload.body !== 'string') {
         return res.status(400).json({ error: 'Missing subject or body' });
     }
 
     try {
-        // Decode service account credentials from base64 env var
-        const credentials = JSON.parse(
-            Buffer.from(gcpCredentialsBase64, 'base64').toString('utf-8')
-        );
-        const ai = new GoogleGenAI({
-            vertexai: true,
-            project: gcpProject,
-            location: GEMINI_LOCATION,
-            googleAuthOptions: { credentials },
-        });
-
-        // ── Build Gemini content parts ────────────────────────────────────
-        let contentParts: any[] = [];
-        let contentSource = 'cuerpo del email'; // for debug display in the response email
-        const attachmentCount = payload.attachments?.length ?? 0;
-        console.log(`[email-webhook] Attachments received: ${attachmentCount}`);
-
-        if (attachmentCount > 0) {
-            const att = payload.attachments![0];
-            console.log(`[email-webhook] Processing attachment: ${att.filename} (${att.mimeType})`);
-            contentSource = att.filename;
-
-            if (isWord(att.mimeType, att.filename)) {
-                // Exact same label as geminiService.ts processPressRelease
-                const text = await extractWordText(att.base64Data);
-                if (text) {
-                    contentParts.push({ text: `TEXTO WORD EXTRAÍDO:\n${text}` });
-                } else {
-                    console.warn('[email-webhook] mammoth returned empty — sending as inlineData');
-                    contentParts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } });
-                }
-            } else if (isPdf(att.mimeType)) {
-                contentParts.push({ inlineData: { mimeType: 'application/pdf', data: att.base64Data } });
-            } else if (att.filename.match(/\.(doc|docx|pdf)$/i)) {
-                // Catch attachments with wrong MIME type (e.g. application/octet-stream) but correct extension
-                if (att.filename.match(/\.(doc|docx)$/i)) {
-                    const text = await extractWordText(att.base64Data);
-                    if (text) {
-                        contentParts.push({ text: `TEXTO WORD EXTRAÍDO:\n${text}` });
-                    } else {
-                        contentParts.push({ inlineData: { mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data: att.base64Data } });
-                    }
-                } else {
-                    contentParts.push({ inlineData: { mimeType: 'application/pdf', data: att.base64Data } });
-                }
-            } else {
-                // Unrecognised type — fall back to cleaned email body
-                contentSource = 'cuerpo del email (adjunto no reconocido)';
-                const cleanBody = cleanEmailBody(payload.body);
-                console.warn(`[email-webhook] Unrecognised attachment type ${att.mimeType} — falling back to body`);
-                contentParts.push({ text: `TEXTO NOTA DE PRENSA:\n${cleanBody}` });
-            }
-        } else {
-            // No attachment: clean the email body stripping forwarding headers
-            const cleanBody = cleanEmailBody(payload.body);
-            console.log(`[email-webhook] No attachment. Cleaned body: ${cleanBody.length} chars`);
-            contentParts.push({ text: `TEXTO NOTA DE PRENSA:\n${cleanBody}` });
-        }
-
-        // ── Call 1: generate press release ───────────────────────────────
-        console.log('[email-webhook] Generating nota de prensa...');
-        const pressRelease = await generatePressRelease(ai, contentParts);
-
-        // ── Call 2: fidelity report ───────────────────────────────────────
-        console.log('[email-webhook] Generating fidelity report...');
-        const originalForFidelity = pressRelease.originalText || payload.body;
-        const fidelity = await generateFidelityReport(ai, originalForFidelity, pressRelease);
-
-        console.log(`[email-webhook] Done. Verdict: ${fidelity.verdict} (${fidelity.fidelityScore}/100)`);
-
-        return res.status(200).json({
-            ok: true,
-            pressRelease,
-            fidelity,
-            contentSource, // filename of attachment used, or 'cuerpo del email'
-        });
-
+        const result = await processEmailContent(payload);
+        return res.status(200).json(result);
     } catch (err: any) {
         console.error('[email-webhook] Error:', err);
         return res.status(500).json({ error: 'Internal server error', message: err.message });
