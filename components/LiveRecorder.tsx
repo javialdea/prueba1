@@ -48,6 +48,8 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
   const allChunksRef = useRef<Blob[]>([]);
   // Counts how many fragments have been sent (used to name "Parte 1", "Parte 2", …)
   const fragmentCountRef = useRef(0);
+  // WebM init segment (first chunk) — must be prepended to every fragment blob so the audio is decodable
+  const initChunkRef = useRef<Blob | null>(null);
 
   // Guards
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -146,7 +148,13 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
     if (chunksRef.current.length === 0) return;
     const currentMimeType = mimeTypeRef.current;
     const partNumber = ++fragmentCountRef.current;
-    const blob = new Blob(chunksRef.current, { type: currentMimeType });
+    // For fragments after the first, prepend the WebM init segment (codec headers) so the
+    // blob is self-contained and decodable by Whisper / Gemini even without previous chunks.
+    const blobParts =
+      partNumber > 1 && initChunkRef.current
+        ? [initChunkRef.current, ...chunksRef.current]
+        : chunksRef.current;
+    const blob = new Blob(blobParts, { type: currentMimeType });
     const file = new File([blob], `Parte ${partNumber}.webm`, { type: currentMimeType });
     const reader = new FileReader();
     reader.onload = () => {
@@ -169,6 +177,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
     isStoppingRef.current = false; // reset so next recording can stop normally
     allChunksRef.current = [];
     fragmentCountRef.current = 0;
+    initChunkRef.current = null;
     setState('idle');
   };
 
@@ -193,6 +202,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       chunksRef.current = [];
       allChunksRef.current = [];
       fragmentCountRef.current = 0;
+      initChunkRef.current = null;
 
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
@@ -204,6 +214,8 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
+          // Save the very first chunk as the WebM init segment (contains codec headers)
+          if (initChunkRef.current === null) initChunkRef.current = e.data;
           chunksRef.current.push(e.data);
           allChunksRef.current.push(e.data); // accumulate full recording
           setHasChunks(true);
@@ -303,6 +315,7 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
       chunksRef.current = [];
       allChunksRef.current = [];
       fragmentCountRef.current = 0;
+      initChunkRef.current = null;
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : 'audio/webm';
@@ -314,6 +327,8 @@ export const LiveRecorder: React.FC<LiveRecorderProps> = ({ onFileSelected, onEr
 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
+          // Save the very first chunk as the WebM init segment (contains codec headers)
+          if (initChunkRef.current === null) initChunkRef.current = e.data;
           chunksRef.current.push(e.data);
           allChunksRef.current.push(e.data); // accumulate full recording
           setHasChunks(true);
