@@ -231,6 +231,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Configure the push endpoint as: https://your-app.vercel.app/api/gmail-pubsub?token=YOUR_SECRET
     const expectedToken = process.env.PUBSUB_TOKEN;
     const receivedToken = req.query.token as string | undefined;
+    console.log(`[gmail-pubsub] DEBUG token check — expected="${expectedToken}" received="${receivedToken}"`);
     if (!expectedToken || receivedToken !== expectedToken) {
         console.warn('[gmail-pubsub] Unauthorized Pub/Sub push — invalid token');
         // Return 200 anyway so Pub/Sub doesn't keep retrying with invalid messages
