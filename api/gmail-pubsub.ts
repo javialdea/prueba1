@@ -108,22 +108,85 @@ async function getGmailAccessToken(): Promise<string> {
 
 // ─── Gmail send helper ─────────────────────────────────────────────────────────
 
+import { ProcessEmailResult } from './email-webhook';
+
+function buildHtmlEmail(result: ProcessEmailResult): string {
+    const pr = result.pressRelease;
+    const fi = result.fidelity;
+    const now = new Date().toLocaleString('es-ES');
+
+    const issuesHtml = (fi.issues ?? []).map(issue => {
+        const label = issue.type === 'ok' ? 'OK' : issue.type === 'omission' ? 'OMISSION' : 'DISTORTION';
+        const weight = issue.importance === 'high' ? 'high' : issue.importance === 'medium' ? 'medium' : 'low';
+        return `<li style="margin-bottom:6px"><span style="color:#6b7280;font-weight:600">[${label} - ${weight}]</span> ${issue.description}</li>`;
+    }).join('');
+
+    const verdictBg = fi.fidelityScore >= 90 ? '#16a34a' : fi.fidelityScore >= 70 ? '#d97706' : '#dc2626';
+    const bodyHtml = (pr.body || '').split('\n\n')
+        .map(p => `<p style="margin:0 0 14px 0;font-size:15px;color:#333;line-height:1.8">${p.replace(/\n/g, '<br>')}</p>`)
+        .join('');
+    const originalHtml = (pr.originalText || '').split('\n')
+        .filter(l => l.trim())
+        .map(l => `<p style="margin:0 0 14px 0;font-size:14px;color:#444;line-height:1.8">${l}</p>`)
+        .join('');
+
+    return `<html lang="es"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:'Helvetica Neue',Arial,sans-serif">
+<div style="max-width:680px;margin:24px auto;background:#fff;border-radius:8px;overflow:hidden">
+
+  <!-- Header -->
+  <div style="background:#333333;padding:20px 28px">
+    <div style="color:#e50051;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase">Servimedia &middot; IA</div>
+    <div style="color:#fff;font-size:18px;font-weight:700;margin-top:4px">Nota de Prensa Generada</div>
+  </div>
+
+  <!-- Nota -->
+  <div style="padding:28px">
+    ${pr.antetitulo ? `<div style="color:#e50051;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">${pr.antetitulo}</div>` : ''}
+    <h1 style="margin:0 0 10px 0;font-size:24px;font-weight:800;color:#1a1a1a;line-height:1.3">${pr.headline}</h1>
+    ${pr.subtitulo ? `<h2 style="margin:0 0 20px 0;font-size:16px;font-weight:600;color:#444;border-left:4px solid #f28e1c;padding-left:12px;line-height:1.4">${pr.subtitulo}</h2>` : ''}
+    <hr style="border:none;border-top:1px solid #eee;margin-bottom:20px">
+    <p style="margin:0 0 16px 0;font-size:15px;font-weight:600;color:#222;line-height:1.7">${pr.lead}</p>
+    <div style="font-size:15px;color:#333;line-height:1.8;white-space:pre-line">${pr.body || ''}</div>
+  </div>
+
+  <!-- Texto original -->
+  <div style="background:#fffbf0;border-top:3px solid #f28e1c;padding:24px 28px">
+    <div style="font-size:13px;font-weight:700;color:#333;letter-spacing:1px;text-transform:uppercase;margin-bottom:16px">📎 Texto Original</div>
+    <div style="border-left:3px solid #f28e1c;padding-left:16px">${originalHtml}</div>
+  </div>
+
+  <!-- Informe de fidelidad -->
+  <div style="background:#f8f9fa;border-top:1px solid #eee;padding:24px 28px">
+    <div style="font-size:13px;font-weight:700;color:#333;letter-spacing:1px;text-transform:uppercase;margin-bottom:14px">📊 Informe de Fidelidad</div>
+    <div style="display:inline-block;background:${verdictBg};color:#fff;font-weight:700;padding:6px 14px;border-radius:20px;font-size:13px;margin-bottom:8px">${fi.verdict} &middot; ${fi.fidelityScore}/100</div>
+    <p style="margin:10px 0 16px 0;font-size:14px;color:#555">${fi.summary || ''}</p>
+    ${issuesHtml ? `<ul style="margin:0;padding-left:18px;font-size:13px;color:#444">${issuesHtml}</ul>` : ''}
+    <p style="margin:20px 0 0;font-size:11px;color:#aaa;text-align:center">Generado autom&aacute;ticamente por Servimedia-IA &middot; ${now}</p>
+  </div>
+
+</div>
+</body></html>`;
+}
+
 /**
- * Sends an email reply via Gmail API using the existing OAuth token.
+ * Sends an HTML email reply via Gmail API using the existing OAuth token.
  */
 async function sendGmailReply(
     toEmail: string,
     subject: string,
-    body: string,
+    htmlBody: string,
     accessToken: string
 ): Promise<void> {
-    // Build RFC 2822 message
+    // Build RFC 2822 MIME message with HTML content type
+    const boundary = 'boundary_servimedia_' + Date.now();
     const message = [
         `To: ${toEmail}`,
-        `Subject: ${subject}`,
-        'Content-Type: text/plain; charset=UTF-8',
+        `Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`,
+        'MIME-Version: 1.0',
+        `Content-Type: text/html; charset=UTF-8`,
         '',
-        body,
+        htmlBody,
     ].join('\r\n');
 
     // Base64url encode
@@ -389,27 +452,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 );
 
                 // ── Send reply with the generated press release ───────────────
-                const pr = result.pressRelease;
-                const replySubject = `TELETIPO: ${pr.headline || email.subject}`;
-                const replyBody = [
-                    pr.antetitulo ? `ANTETÍTULO: ${pr.antetitulo}` : '',
-                    `TITULAR: ${pr.headline}`,
-                    pr.subtitulo ? `SUBTÍTULO: ${pr.subtitulo}` : '',
-                    '',
-                    `ENTRADILLA: ${pr.lead}`,
-                    '',
-                    pr.body,
-                    '',
-                    '---',
-                    `Fidelidad: ${result.fidelity.verdict} (${result.fidelity.fidelityScore}/100)`,
-                    result.fidelity.summary ? `Resumen: ${result.fidelity.summary}` : '',
-                ].filter(Boolean).join('\n');
+                const replySubject = `✅ Nota generada: ${email.subject}`;
+                const htmlBody = buildHtmlEmail(result);
 
                 // Extract plain email address from "Name <email>" format
                 const toMatch = email.from.match(/<([^>]+)>/) || [null, email.from];
                 const toEmail = toMatch[1];
 
-                await sendGmailReply(toEmail, replySubject, replyBody, accessToken);
+                await sendGmailReply(toEmail, replySubject, htmlBody, accessToken);
             } catch (msgErr: any) {
                 console.error(`[gmail-pubsub] Error processing message ${msgId}:`, msgErr.message);
             }
