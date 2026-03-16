@@ -4,6 +4,42 @@ import { processEmailContent } from './email-webhook';
 // Vercel: needs enough time to fetch the email + run Gemini (same budget as email-webhook)
 export const config = { maxDuration: 60, bodyParser: { sizeLimit: '1mb' } };
 
+// ─── Supabase state helpers (stores last processed historyId) ───────────────────
+
+const SUPABASE_URL = process.env.SUPABASE_URL!;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const STATE_KEY = 'gmail_last_history_id';
+
+async function getLastHistoryId(): Promise<string | null> {
+    try {
+        const res = await fetch(
+            `${SUPABASE_URL}/rest/v1/gmail_state?key=eq.${STATE_KEY}&select=value`,
+            { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+        );
+        const rows = await res.json() as Array<{ value: string }>;
+        return rows[0]?.value ?? null;
+    } catch {
+        return null;
+    }
+}
+
+async function setLastHistoryId(historyId: string): Promise<void> {
+    try {
+        await fetch(`${SUPABASE_URL}/rest/v1/gmail_state`, {
+            method: 'POST',
+            headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${SUPABASE_KEY}`,
+                'Content-Type': 'application/json',
+                Prefer: 'resolution=merge-duplicates',
+            },
+            body: JSON.stringify({ key: STATE_KEY, value: historyId }),
+        });
+    } catch {
+        // Non-fatal: worst case we process a duplicate on next run
+    }
+}
+
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 interface PubSubPushBody {
@@ -260,12 +296,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Vercel terminates the function after res is sent, so we process first
     // and respond at the end. Pub/Sub ack deadline is 120s; function maxDuration is 60s.
     try {
+        const currentHistoryId = String(gmailPayload.historyId);
+
+        // Retrieve the previously stored historyId to use as startHistoryId in history.list.
+        // history.list(startHistoryId=X) returns entries with id > X, so we pass the LAST
+        // known id (not the current one) to get the messages added in between.
+        const lastHistoryId = await getLastHistoryId();
+        console.log(`[gmail-pubsub] lastHistoryId=${lastHistoryId} currentHistoryId=${currentHistoryId}`);
+
+        // Always update stored historyId first to avoid reprocessing on retry
+        await setLastHistoryId(currentHistoryId);
+
+        if (!lastHistoryId) {
+            // First run: no previous id stored, just save current and skip processing
+            console.log('[gmail-pubsub] First run — storing historyId, skipping processing');
+            return res.status(200).json({ ok: true, firstRun: true });
+        }
+
+        if (lastHistoryId === currentHistoryId) {
+            console.log('[gmail-pubsub] historyId unchanged — skipping');
+            return res.status(200).json({ ok: true, skipped: true });
+        }
+
         const accessToken = await getGmailAccessToken();
-        const newIds = await getNewMessageIds(
-            userEmail,
-            String(gmailPayload.historyId),
-            accessToken
-        );
+        const newIds = await getNewMessageIds(userEmail, lastHistoryId, accessToken);
         console.log(`[gmail-pubsub] New message IDs: ${newIds.join(', ') || 'none'}`);
 
         for (const msgId of newIds) {
