@@ -231,7 +231,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Configure the push endpoint as: https://your-app.vercel.app/api/gmail-pubsub?token=YOUR_SECRET
     const expectedToken = process.env.PUBSUB_TOKEN;
     const receivedToken = req.query.token as string | undefined;
-    console.log(`[gmail-pubsub] DEBUG token check — expected="${expectedToken}" received="${receivedToken}"`);
     if (!expectedToken || receivedToken !== expectedToken) {
         console.warn('[gmail-pubsub] Unauthorized Pub/Sub push — invalid token');
         // Return 200 anyway so Pub/Sub doesn't keep retrying with invalid messages
@@ -257,12 +256,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const userEmail = process.env.GMAIL_USER_EMAIL || gmailPayload.emailAddress;
 
-    // ── ACK immediately — Pub/Sub retries if we return non-2xx ───────────────
-    // We respond 200 before processing to avoid duplicate retries on slow Gemini calls.
-    // Processing happens after the response is sent.
-    res.status(200).json({ ok: true, processing: true });
-
-    // ── Process new emails (after response sent) ──────────────────────────────
+    // ── Process new emails, then ACK ─────────────────────────────────────────
+    // Vercel terminates the function after res is sent, so we process first
+    // and respond at the end. Pub/Sub ack deadline is 120s; function maxDuration is 60s.
     try {
         const accessToken = await getGmailAccessToken();
         const newIds = await getNewMessageIds(
@@ -296,11 +292,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 );
             } catch (msgErr: any) {
                 console.error(`[gmail-pubsub] Error processing message ${msgId}:`, msgErr.message);
-                // Continue with other messages even if one fails
             }
         }
+
+        return res.status(200).json({ ok: true });
     } catch (err: any) {
-        // Log errors but don't affect the already-sent 200 response
         console.error('[gmail-pubsub] Fatal error during email processing:', err.message);
+        return res.status(200).json({ ok: false, reason: err.message });
     }
 }
