@@ -106,6 +106,49 @@ async function getGmailAccessToken(): Promise<string> {
     return cachedToken.accessToken;
 }
 
+// ─── Gmail send helper ─────────────────────────────────────────────────────────
+
+/**
+ * Sends an email reply via Gmail API using the existing OAuth token.
+ */
+async function sendGmailReply(
+    toEmail: string,
+    subject: string,
+    body: string,
+    accessToken: string
+): Promise<void> {
+    // Build RFC 2822 message
+    const message = [
+        `To: ${toEmail}`,
+        `Subject: ${subject}`,
+        'Content-Type: text/plain; charset=UTF-8',
+        '',
+        body,
+    ].join('\r\n');
+
+    // Base64url encode
+    const encoded = Buffer.from(message).toString('base64')
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+    const resp = await fetch(
+        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+        {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ raw: encoded }),
+        }
+    );
+
+    if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`[gmail-pubsub] Failed to send email: ${resp.status} ${text}`);
+    }
+    console.log(`[gmail-pubsub] Reply sent to ${toEmail}`);
+}
+
 // ─── Gmail API helpers ─────────────────────────────────────────────────────────
 
 /**
@@ -344,6 +387,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     `Verdict: ${result.fidelity.verdict} (${result.fidelity.fidelityScore}/100). ` +
                     `Source: ${result.contentSource}`
                 );
+
+                // ── Send reply with the generated press release ───────────────
+                const pr = result.pressRelease;
+                const replySubject = `TELETIPO: ${pr.headline || email.subject}`;
+                const replyBody = [
+                    pr.antetitulo ? `ANTETÍTULO: ${pr.antetitulo}` : '',
+                    `TITULAR: ${pr.headline}`,
+                    pr.subtitulo ? `SUBTÍTULO: ${pr.subtitulo}` : '',
+                    '',
+                    `ENTRADILLA: ${pr.lead}`,
+                    '',
+                    pr.body,
+                    '',
+                    '---',
+                    `Fidelidad: ${result.fidelity.verdict} (${result.fidelity.fidelityScore}/100)`,
+                    result.fidelity.summary ? `Resumen: ${result.fidelity.summary}` : '',
+                ].filter(Boolean).join('\n');
+
+                // Extract plain email address from "Name <email>" format
+                const toMatch = email.from.match(/<([^>]+)>/) || [null, email.from];
+                const toEmail = toMatch[1];
+
+                await sendGmailReply(toEmail, replySubject, replyBody, accessToken);
             } catch (msgErr: any) {
                 console.error(`[gmail-pubsub] Error processing message ${msgId}:`, msgErr.message);
             }
