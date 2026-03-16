@@ -307,7 +307,12 @@ async function processEmailContent(payload: EmailWebhookPayload): Promise<Proces
     console.log(`[email-webhook] Attachments received: ${attachmentCount}`);
 
     if (attachmentCount > 0) {
-        const att = payload.attachments![0];
+        // Find the first PDF or Word attachment, skipping inline images
+        const att = payload.attachments!.find(a =>
+            isPdf(a.mimeType) ||
+            isWord(a.mimeType, a.filename) ||
+            a.filename.match(/\.(doc|docx|pdf)$/i)
+        ) ?? payload.attachments![0];
         console.log(`[email-webhook] Processing attachment: ${att.filename} (${att.mimeType})`);
         contentSource = att.filename;
 
