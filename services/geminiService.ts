@@ -3,6 +3,8 @@ import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { AnalysisResult, PressReleaseResult, TopicDetail, TranscriptionSegment } from "../types";
 import mammoth from "mammoth";
 import { supabase } from "./supabase";
+import { GEMINI_2_5_PRO_PRICING, GEMINI_2_5_FLASH_PRICING } from '../utils/costCalculator';
+import { addTokenEntry } from '../utils/tokenStore';
 
 // In-memory cache: avoids hitting /api/gemini-key on every call
 let cachedKey: string | null = null;
@@ -62,15 +64,38 @@ const DEFAULT_MODELS = {
 };
 
 // ─── Token Usage Logger ─────────────────────────────────────────────────────
-// Lee usageMetadata que Gemini devuelve gratis en cada respuesta.
-// Abre DevTools → Consola y filtra por "[tokens:" para ver el desglose real.
+// Reads usageMetadata (free on every Gemini response), calculates the real cost
+// in EUR using the billing-account pricing tables, and persists the entry to
+// tokenStore so the Admin Panel can display it in real time.
+
+// Operations that use Gemini 2.5 Pro
+const PRO_OPERATIONS = new Set([
+  'processAudio', 'processPressRelease', 'verifyManualSelection',
+]);
+// Operations where input tokens are audio (Pro audio pricing)
+const AUDIO_INPUT_OPERATIONS = new Set(['processAudio']);
+
 const logTokenUsage = (operation: string, response: any): void => {
   const meta = response.usageMetadata;
   if (!meta) return;
+
   const input = meta.promptTokenCount ?? 0;
   const output = meta.candidatesTokenCount ?? 0;
   const total = meta.totalTokenCount ?? 0;
+
   console.log(`[tokens:${operation}] entrada=${input} | salida=${output} | total=${total}`);
+
+  // Calculate real cost in EUR
+  const isPro = PRO_OPERATIONS.has(operation);
+  const isAudio = AUDIO_INPUT_OPERATIONS.has(operation);
+  const pricing = isPro ? GEMINI_2_5_PRO_PRICING.paid : GEMINI_2_5_FLASH_PRICING.paid;
+  const inputPrice = (isAudio && pricing.audioInputPrice) ? pricing.audioInputPrice : pricing.inputPrice;
+
+  const costEUR =
+    (input / 1_000_000) * inputPrice +
+    (output / 1_000_000) * pricing.outputPrice;
+
+  addTokenEntry({ operation, inputTokens: input, outputTokens: output, totalTokens: total, costEUR });
 };
 
 async function retryOperation<T>(operation: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
