@@ -145,7 +145,7 @@ function buildHtmlEmail(result: ProcessEmailResult): string {
     ${pr.subtitulo ? `<h2 style="margin:0 0 20px 0;font-size:16px;font-weight:600;color:#444;border-left:4px solid #f28e1c;padding-left:12px;line-height:1.4">${pr.subtitulo}</h2>` : ''}
     <hr style="border:none;border-top:1px solid #eee;margin-bottom:20px">
     <p style="margin:0 0 16px 0;font-size:15px;font-weight:600;color:#222;line-height:1.7">${pr.lead}</p>
-    <div style="font-size:15px;color:#333;line-height:1.8;white-space:pre-line">${pr.body || ''}</div>
+    <div style="font-size:15px;color:#333;line-height:1.8">${bodyHtml}</div>
   </div>
 
   <!-- Texto original -->
