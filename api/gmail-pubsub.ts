@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { processEmailContent } from './email-webhook';
+import { processEmailContent, ProcessEmailResult } from './email-webhook';
 
 // Vercel: needs enough time to fetch the email + run Gemini (same budget as email-webhook)
 export const config = { maxDuration: 60, bodyParser: { sizeLimit: '1mb' } };
@@ -107,8 +107,6 @@ async function getGmailAccessToken(): Promise<string> {
 }
 
 // ─── Gmail send helper ─────────────────────────────────────────────────────────
-
-import { ProcessEmailResult } from './email-webhook';
 
 function buildHtmlEmail(result: ProcessEmailResult): string {
     const pr = result.pressRelease;
