@@ -1,6 +1,18 @@
 // Gemini API Pricing Calculator
 // Based on official GCP billing account prices (EUR) — March 2026
 // Source: Cuenta de facturación GCP — "Precio de Mi cuenta de facturación 1.csv"
+//
+// ─── Real-world calibration (1–16 March 2026) ───────────────────────────────
+// Actual spend: €16.35 (16 days) → ~€30.66/month
+//   Gemini API (frontend app): €15.99  |  Vertex AI (email webhook): €0.37
+//   Dominant cost: Gemini 2.5 Pro output tokens (+€7.22, +120% vs Feb)
+// Key calibration decisions:
+//   • Audio output raised from 600→1100 tokens/min: full JSON response
+//     (word-by-word timestamped transcription + factChecks + topics +
+//      suggestedHeadlines + socialThreads) is ~1,100 tokens/min of audio
+//   • avgAudioMinutes default raised from 5→12 min (Servimedia press
+//     conferences typically run 15–30 min)
+//   • Press release output raised from 800→1200 tokens (6-field JSON)
 
 export interface PricingTier {
     inputPrice: number;         // € per 1M input tokens (text)
@@ -13,6 +25,17 @@ export interface ModelPricing {
     free?: PricingTier;
     paid: PricingTier;
 }
+
+// ─── Gemini 2.0 Flash 001 ───────────────────────────────────────────────────
+// Email webhook usage: processEmailContent (both nota + fidelity calls)
+// Same Flash tier pricing as 2.5 Flash (approximate — GCP SKUs not yet billed separately)
+export const GEMINI_2_0_FLASH_001_PRICING: ModelPricing = {
+    paid: {
+        inputPrice: 0.25446,       // €0.25446 / 1M text tokens (same SKU as 2.5 Flash text in)
+        audioInputPrice: 0.8482,   // €0.8482 / 1M audio tokens
+        outputPrice: 2.1205,       // €2.1205 / 1M output tokens (same SKU as 2.5 Flash text out)
+    }
+};
 
 // ─── Gemini 2.5 Flash ───────────────────────────────────────────────────────
 // App usage: chat, chatWithDocuments, chatWithSource, suggestHeadlinesForTopic
@@ -64,7 +87,11 @@ export const estimateAudioTokens = (durationMinutes: number): TokenEstimate => {
     // Gemini audio tokenization: ~32 tokens/second ≈ 1,920 tokens/minute
     const audioTokens = durationMinutes * 1920;
     const promptTokens = 500; // System prompt + instructions
-    const outputTokens = durationMinutes * 600; // Structured analysis JSON (scales with content)
+    // Output calibrated to real billing data (March 2026):
+    // Full JSON includes word-by-word timestamped transcription (~750 tokens/min)
+    // + factChecks + topics + suggestedHeadlines + socialThreads (~350 tokens/min)
+    // → ~1,100 tokens/min of source audio
+    const outputTokens = durationMinutes * 1100;
 
     return {
         inputTokens: audioTokens + promptTokens,
@@ -75,8 +102,10 @@ export const estimateAudioTokens = (durationMinutes: number): TokenEstimate => {
 export const estimatePressReleaseTokens = (documentSizeKB: number): TokenEstimate => {
     // ~250 tokens per KB of text content
     const documentTokens = documentSizeKB * 250;
-    const promptTokens = 300; // System prompt
-    const outputTokens = 800; // Headline + lead + body JSON
+    const promptTokens = 1200; // Large system prompt (~1,200 tokens per billing data)
+    // Output: 6-field JSON (antetitulo + headline + subtitulo + lead + body + originalText)
+    // body alone ~400 words (~530 tokens) + other fields → ~1,200 tokens total
+    const outputTokens = 1200;
 
     return {
         inputTokens: documentTokens + promptTokens,
@@ -193,30 +222,30 @@ export const calculateTeletipoCost = (durationMinutes: number, tier: 'free' | 'p
     };
 };
 
-// Email pipeline → Gemini 2.5 Pro (nota) + Gemini 2.5 Flash (fidelity report)
-// Call 1: 2.5 Pro — nota de agencia JSON
-// Call 2: 2.5 Flash — informe de fidelidad JSON
+// Email pipeline → Gemini 2.0 Flash 001 (nota) + Gemini 2.0 Flash 001 (fidelity report)
+// Both calls use gemini-2.0-flash-001 in api/email-webhook.ts
+// Call 1: Flash — nota de agencia JSON
+// Call 2: Flash — informe de fidelidad JSON
 export const calculateEmailPipelineCost = (documentSizeKB: number, tier: 'free' | 'paid' = 'paid'): CostEstimate => {
-    const proPricing = GEMINI_2_5_PRO_PRICING.paid;
-    const flashPricing = GEMINI_2_5_FLASH_PRICING.paid;
+    const flashPricing = GEMINI_2_0_FLASH_001_PRICING.paid;
 
-    // Pro: document tokens + large system prompt (~1200 tokens)
-    const proInputTokens = documentSizeKB * 250 + 1200;
-    const proOutputTokens = 800; // JSON nota
+    // Call 1 (nota): document tokens + large system prompt (~1200 tokens)
+    const notaInputTokens = documentSizeKB * 250 + 1200;
+    const notaOutputTokens = 800; // JSON nota
 
-    // Flash: original text + generated nota + short prompt
-    const flashInputTokens = documentSizeKB * 250 + proOutputTokens + 500;
-    const flashOutputTokens = 500; // JSON fidelity report
+    // Call 2 (fidelity): original text + generated nota + short prompt
+    const fidelityInputTokens = documentSizeKB * 250 + notaOutputTokens + 500;
+    const fidelityOutputTokens = 500; // JSON fidelity report
 
-    const proInputCost = (proInputTokens / 1_000_000) * proPricing.inputPrice;
-    const proOutputCost = (proOutputTokens / 1_000_000) * proPricing.outputPrice;
-    const flashInputCost = (flashInputTokens / 1_000_000) * flashPricing.inputPrice;
-    const flashOutputCost = (flashOutputTokens / 1_000_000) * flashPricing.outputPrice;
+    const notaInputCost = (notaInputTokens / 1_000_000) * flashPricing.inputPrice;
+    const notaOutputCost = (notaOutputTokens / 1_000_000) * flashPricing.outputPrice;
+    const fidelityInputCost = (fidelityInputTokens / 1_000_000) * flashPricing.inputPrice;
+    const fidelityOutputCost = (fidelityOutputTokens / 1_000_000) * flashPricing.outputPrice;
 
     return {
-        inputCost: proInputCost + flashInputCost,
-        outputCost: proOutputCost + flashOutputCost,
-        totalCost: proInputCost + proOutputCost + flashInputCost + flashOutputCost,
+        inputCost: notaInputCost + fidelityInputCost,
+        outputCost: notaOutputCost + fidelityOutputCost,
+        totalCost: notaInputCost + notaOutputCost + fidelityInputCost + fidelityOutputCost,
         tier,
     };
 };
@@ -256,7 +285,7 @@ export interface MonthlyUsage {
 export const calculateMonthlyProjection = (
     usage: MonthlyUsage,
     tier: 'free' | 'paid' = 'paid',
-    avgAudioMinutes: number = 5,
+    avgAudioMinutes: number = 12,   // Raised from 5→12: Servimedia press conferences avg 15–30 min
     avgDocumentSizeKB: number = 50
 ): CostEstimate => {
     const audioCost = calculateAudioCost(avgAudioMinutes, tier);

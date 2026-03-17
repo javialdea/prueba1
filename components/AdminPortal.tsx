@@ -2,13 +2,18 @@ import React, { useState, useEffect } from 'react';
 import {
     X, Users, BarChart3, Settings,
     Shield, ShieldAlert, ToggleLeft, ToggleRight,
-    Loader2, CheckCircle, Search, Save, KeyRound, Sparkles, DollarSign, TrendingUp, Zap, FileAudio, FileText, MessageSquare
+    Loader2, CheckCircle, Search, Save, KeyRound, Sparkles, DollarSign, TrendingUp, Zap, FileAudio, FileText, MessageSquare, Activity
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import {
     calculateAudioCost, calculatePressReleaseCost, calculateChatCost,
-    calculateMonthlyProjection, formatCurrency, GEMINI_2_5_PRO_PRICING, GEMINI_2_5_FLASH_PRICING
+    calculateMonthlyProjection, formatCurrency,
+    GEMINI_2_5_PRO_PRICING, GEMINI_2_5_FLASH_PRICING, GEMINI_2_0_FLASH_001_PRICING
 } from '../utils/costCalculator';
+import {
+    getSessionTotals, subscribeToTokenEntries, getTokenEntries,
+    type SessionTotals, type TokenEntry
+} from '../utils/tokenStore';
 
 interface Profile {
     id: string;
@@ -21,7 +26,7 @@ interface Profile {
 interface AdminPortalProps {
     isOpen: boolean;
     onClose: () => void;
-    onOpenCostEstimator?: () => void;
+    onOpenCostEstimator?: () => void; // kept for backwards-compat, unused
 }
 
 interface CostData {
@@ -48,12 +53,24 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onOpe
     const [costs, setCosts] = useState<CostData | null>(null);
     const [monthlyAudio, setMonthlyAudio] = useState(10);
     const [monthlyPress, setMonthlyPress] = useState(5);
+    const [monthlyTeletipos, setMonthlyTeletipos] = useState(5);
+    const [monthlyEmails, setMonthlyEmails] = useState(10);
+    const [sessionTotals, setSessionTotals] = useState<SessionTotals>(getSessionTotals());
+    const [sessionEntries, setSessionEntries] = useState<TokenEntry[]>(getTokenEntries());
 
     useEffect(() => {
         if (isOpen) {
             fetchData();
         }
     }, [isOpen]);
+
+    useEffect(() => {
+        const unsub = subscribeToTokenEntries(() => {
+            setSessionTotals(getSessionTotals());
+            setSessionEntries(getTokenEntries());
+        });
+        return unsub;
+    }, []);
 
     const fetchData = async () => {
         setLoading(true);
@@ -113,12 +130,29 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onOpe
             }
 
             if (jobData && jobData.length > 0) {
-                const audioJobs = jobData.filter((j: any) => j.job_type === 'audio');
-                const pressJobs = jobData.filter((j: any) => j.job_type === 'press_release');
-                // Estimate audio minutes from transcription length (rough: 150 words/min, 5 chars/word)
+                // Filter to jobs since March 1, 2026
+                const march1 = new Date('2026-03-01T00:00:00Z');
+                const recentJobs = jobData.filter((j: any) => !j.created_at || new Date(j.created_at) >= march1);
+                const audioJobs = recentJobs.filter((j: any) => j.job_type === 'audio');
+                const pressJobs = recentJobs.filter((j: any) => j.job_type === 'press_release');
+                // Estimate audio duration from transcription (array of {timestamp, text})
                 const estimateMinutes = (job: any) => {
-                    const transcription = job.result?.transcription || '';
-                    return Math.max(1, transcription.length / (150 * 5));
+                    const transcription = job.result?.transcription;
+                    if (Array.isArray(transcription) && transcription.length > 0) {
+                        const lastItem = transcription[transcription.length - 1];
+                        const ts: string = lastItem?.timestamp || '';
+                        const parts = ts.replace(/[,]/g, '.').split(':').map(Number);
+                        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                            return Math.max(1, parts[0] + parts[1] / 60);
+                        }
+                        if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+                            return Math.max(1, parts[0] * 60 + parts[1] + parts[2] / 60);
+                        }
+                        const totalChars = transcription.reduce((s: number, i: any) => s + (i.text?.length || 0), 0);
+                        return Math.max(1, totalChars / (150 * 5));
+                    }
+                    if (typeof transcription === 'string') return Math.max(1, transcription.length / (150 * 5));
+                    return 5;
                 };
                 const avgAudioMin = audioJobs.length > 0
                     ? audioJobs.reduce((sum: number, j: any) => sum + estimateMinutes(j), 0) / audioJobs.length
@@ -332,34 +366,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onOpe
                         </div>
                     ) : activeTab === 'costs' ? (
                         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                            {/* Cost Estimator shortcut */}
-                            {onOpenCostEstimator && (
-                                <button
-                                    onClick={onOpenCostEstimator}
-                                    className="w-full flex items-center justify-between px-6 py-4 bg-green-50 border border-green-200 rounded-2xl hover:bg-green-100 transition-colors group"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <DollarSign className="w-5 h-5 text-green-600" />
-                                        <div className="text-left">
-                                            <p className="text-xs font-black text-green-700 uppercase tracking-widest">Estimador de Costes Detallado</p>
-                                            <p className="text-[9px] text-green-600/60 font-bold uppercase tracking-wider mt-0.5">Calcula proyecciones por operación · Precios reales GCP</p>
-                                        </div>
-                                    </div>
-                                    <Zap className="w-4 h-4 text-green-500 group-hover:scale-110 transition-transform" />
-                                </button>
-                            )}
-                            {/* Total Cost Banner */}
+                            {/* Total Cost Banner — historical since March 1 */}
                             <div className="bg-gradient-to-br from-servimedia-gray to-black rounded-3xl p-8 text-white relative overflow-hidden">
                                 <div className="absolute top-0 right-0 w-64 h-64 bg-servimedia-pink/10 blur-3xl rounded-full -translate-y-1/2 translate-x-1/4" />
                                 <DollarSign className="w-10 h-10 mb-4 opacity-30" />
-                                <p className="text-[10px] font-black uppercase tracking-[0.4em] opacity-60 mb-2">Gasto Estimado Total (histórico)</p>
+                                <p className="text-[10px] font-black uppercase tracking-[0.4em] opacity-60 mb-2">Gasto Estimado desde 1 de Marzo 2026</p>
                                 <h2 className="text-5xl font-black tracking-tighter mb-1">
                                     {costs ? formatCurrency(costs.estimatedTotalCost) : '–'}
                                 </h2>
-                                <p className="text-[10px] opacity-40 mt-2">Basado en {(costs?.totalAudioJobs || 0) + (costs?.totalPressJobs || 0)} trabajos completados • Cálculo estimado</p>
+                                <p className="text-[10px] opacity-40 mt-2">
+                                    {(costs?.totalAudioJobs || 0) + (costs?.totalPressJobs || 0)} trabajos procesados · coste estimado por operación
+                                </p>
                             </div>
 
-                            {/* Breakdown */}
+                            {/* Historical breakdown */}
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div className="bg-servimedia-pink/5 border border-servimedia-pink/20 rounded-2xl p-6">
                                     <FileAudio className="w-6 h-6 text-servimedia-pink mb-3 opacity-60" />
@@ -379,6 +399,78 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onOpe
                                     <p className="text-2xl font-black text-servimedia-gray">{costs ? formatCurrency(costs.chatCostTotal) : '–'}</p>
                                     <p className="text-[9px] text-servimedia-gray/30 mt-1">~3 chats por trabajo (estimado)</p>
                                 </div>
+                            </div>
+
+                            {/* Session real costs — from tokenStore usageMetadata */}
+                            <div className="bg-white border border-servimedia-border rounded-3xl overflow-hidden shadow-sm">
+                                <div className="px-6 py-4 border-b border-servimedia-border bg-servimedia-light/30 flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <Activity className="w-4 h-4 text-servimedia-pink" />
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-servimedia-gray/60">Coste Real de Sesión</p>
+                                        <span className="text-[9px] text-servimedia-gray/30 font-bold">(datos reales de usageMetadata)</span>
+                                    </div>
+                                    {sessionTotals.callCount > 0 && (
+                                        <span className="text-lg font-black text-servimedia-pink">{formatCurrency(sessionTotals.totalCostEUR)}</span>
+                                    )}
+                                </div>
+                                {sessionEntries.length === 0 ? (
+                                    <div className="px-6 py-8 text-center">
+                                        <Zap className="w-8 h-8 text-servimedia-gray/10 mx-auto mb-2" />
+                                        <p className="text-[10px] text-servimedia-gray/30 font-bold uppercase tracking-widest">Sin actividad en esta sesión</p>
+                                        <p className="text-[9px] text-servimedia-gray/20 mt-1">Los costes reales aparecerán aquí al usar la IA</p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left text-xs">
+                                                <thead className="bg-servimedia-light/20">
+                                                    <tr>
+                                                        <th className="px-4 py-3 text-[9px] font-black uppercase tracking-widest text-servimedia-gray/30">Operación</th>
+                                                        <th className="px-4 py-3 text-[9px] font-black uppercase tracking-widest text-servimedia-gray/30 text-right">Tokens entrada</th>
+                                                        <th className="px-4 py-3 text-[9px] font-black uppercase tracking-widest text-servimedia-gray/30 text-right">Tokens salida</th>
+                                                        <th className="px-4 py-3 text-[9px] font-black uppercase tracking-widest text-servimedia-gray/30 text-right">Coste</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-servimedia-border">
+                                                    {sessionEntries.slice(-10).reverse().map(entry => (
+                                                        <tr key={entry.id} className="hover:bg-servimedia-light/20 transition-colors">
+                                                            <td className="px-4 py-3">
+                                                                <span className="font-bold text-servimedia-gray">{entry.label}</span>
+                                                                <span className="block text-[9px] text-servimedia-gray/30">
+                                                                    {entry.timestamp.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right text-servimedia-gray/60">{entry.inputTokens.toLocaleString()}</td>
+                                                            <td className="px-4 py-3 text-right text-servimedia-gray/60">{entry.outputTokens.toLocaleString()}</td>
+                                                            <td className="px-4 py-3 text-right font-black text-servimedia-gray">{formatCurrency(entry.costEUR)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        {sessionEntries.length > 10 && (
+                                            <p className="text-center text-[9px] text-servimedia-gray/20 py-2">Mostrando las últimas 10 de {sessionEntries.length} operaciones</p>
+                                        )}
+                                        <div className="px-6 py-4 border-t border-servimedia-border bg-servimedia-light/10 grid grid-cols-4 gap-4 text-center">
+                                            <div>
+                                                <p className="text-[9px] text-servimedia-gray/30 font-bold uppercase tracking-widest">Llamadas</p>
+                                                <p className="text-lg font-black text-servimedia-gray">{sessionTotals.callCount}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[9px] text-servimedia-gray/30 font-bold uppercase tracking-widest">Tokens entrada</p>
+                                                <p className="text-lg font-black text-servimedia-gray">{sessionTotals.totalInputTokens.toLocaleString()}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[9px] text-servimedia-gray/30 font-bold uppercase tracking-widest">Tokens salida</p>
+                                                <p className="text-lg font-black text-servimedia-gray">{sessionTotals.totalOutputTokens.toLocaleString()}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[9px] text-servimedia-gray/30 font-bold uppercase tracking-widest">Coste total</p>
+                                                <p className="text-lg font-black text-servimedia-pink">{formatCurrency(sessionTotals.totalCostEUR)}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Monthly Projection */}
@@ -402,14 +494,28 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onOpe
                                         <input type="range" min={0} max={50} value={monthlyPress} onChange={e => setMonthlyPress(Number(e.target.value))}
                                             className="w-full accent-servimedia-orange" />
                                     </div>
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40 block mb-2">
+                                            Teletipos generados: <span className="text-purple-500">{monthlyTeletipos}</span>
+                                        </label>
+                                        <input type="range" min={0} max={50} value={monthlyTeletipos} onChange={e => setMonthlyTeletipos(Number(e.target.value))}
+                                            className="w-full accent-purple-500" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40 block mb-2">
+                                            Emails NdP recibidos: <span className="text-green-600">{monthlyEmails}</span>
+                                        </label>
+                                        <input type="range" min={0} max={100} value={monthlyEmails} onChange={e => setMonthlyEmails(Number(e.target.value))}
+                                            className="w-full accent-green-600" />
+                                    </div>
                                 </div>
                                 <div className="bg-white rounded-2xl p-6 border border-servimedia-border flex items-center justify-between">
                                     <div>
                                         <p className="text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40">Coste mensual estimado</p>
                                         <p className="text-4xl font-black text-servimedia-gray mt-1">
                                             {formatCurrency(calculateMonthlyProjection(
-                                                { audioTranscriptions: monthlyAudio, pressReleases: monthlyPress, chatMessages: monthlyAudio * 3, madridSummaries: 0 },
-                                                'paid', costs?.avgAudioMinutes || 5, 50
+                                                { audioTranscriptions: monthlyAudio, pressReleases: monthlyPress, chatMessages: monthlyAudio * 3, madridSummaries: 0, teletipos: monthlyTeletipos, emailsRecibidos: monthlyEmails },
+                                                'paid', costs?.avgAudioMinutes || 12, 50
                                             ).totalCost)}
                                         </p>
                                     </div>
@@ -420,30 +526,40 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onOpe
                             {/* Pricing reference */}
                             <div className="bg-white border border-servimedia-border rounded-2xl overflow-hidden shadow-sm">
                                 <div className="px-6 py-4 border-b border-servimedia-border bg-servimedia-light/30">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40">Tarifas Gemini (referencia oficial)</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-servimedia-gray/40">Tarifas Gemini API — Precios reales GCP (EUR)</p>
                                 </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left text-xs">
                                         <thead className="bg-servimedia-light/30">
                                             <tr>
                                                 <th className="px-4 py-3 font-black uppercase tracking-widest text-[9px] text-servimedia-gray/40">Modelo</th>
-                                                <th className="px-4 py-3 font-black uppercase tracking-widest text-[9px] text-servimedia-gray/40">Input (1M tokens)</th>
-                                                <th className="px-4 py-3 font-black uppercase tracking-widest text-[9px] text-servimedia-gray/40">Audio (1M tokens)</th>
-                                                <th className="px-4 py-3 font-black uppercase tracking-widest text-[9px] text-servimedia-gray/40">Output (1M tokens)</th>
+                                                <th className="px-4 py-3 font-black uppercase tracking-widest text-[9px] text-servimedia-gray/40">Uso en app</th>
+                                                <th className="px-4 py-3 font-black uppercase tracking-widest text-[9px] text-servimedia-gray/40 text-right">Input /1M</th>
+                                                <th className="px-4 py-3 font-black uppercase tracking-widest text-[9px] text-servimedia-gray/40 text-right">Audio /1M</th>
+                                                <th className="px-4 py-3 font-black uppercase tracking-widest text-[9px] text-servimedia-gray/40 text-right">Output /1M</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-servimedia-border">
                                             <tr className="hover:bg-servimedia-light/20 transition-colors">
                                                 <td className="px-4 py-4 font-black text-servimedia-gray">Gemini 2.5 Pro</td>
-                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_2_5_PRO_PRICING.paid.inputPrice)}</td>
-                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_2_5_PRO_PRICING.paid.audioInputPrice || 0)}</td>
-                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_2_5_PRO_PRICING.paid.outputPrice)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/40 text-[9px]">Audio · Nota prensa · Teletipo · Fact-check</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60 text-right">{formatCurrency(GEMINI_2_5_PRO_PRICING.paid.inputPrice)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60 text-right">{formatCurrency(GEMINI_2_5_PRO_PRICING.paid.audioInputPrice || 0)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60 text-right">{formatCurrency(GEMINI_2_5_PRO_PRICING.paid.outputPrice)}</td>
                                             </tr>
                                             <tr className="hover:bg-servimedia-light/20 transition-colors">
                                                 <td className="px-4 py-4 font-black text-servimedia-gray">Gemini 2.5 Flash</td>
-                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_2_5_FLASH_PRICING.paid.inputPrice)}</td>
-                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_2_5_FLASH_PRICING.paid.audioInputPrice || 0)}</td>
-                                                <td className="px-4 py-4 text-servimedia-gray/60">{formatCurrency(GEMINI_2_5_FLASH_PRICING.paid.outputPrice)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/40 text-[9px]">Chat · Titulares · Chat con docs</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60 text-right">{formatCurrency(GEMINI_2_5_FLASH_PRICING.paid.inputPrice)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60 text-right">{formatCurrency(GEMINI_2_5_FLASH_PRICING.paid.audioInputPrice || 0)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60 text-right">{formatCurrency(GEMINI_2_5_FLASH_PRICING.paid.outputPrice)}</td>
+                                            </tr>
+                                            <tr className="hover:bg-servimedia-light/20 transition-colors bg-green-50/30">
+                                                <td className="px-4 py-4 font-black text-servimedia-gray">Gemini 2.0 Flash 001</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/40 text-[9px]">Pipeline email (webhook Vercel)</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60 text-right">{formatCurrency(GEMINI_2_0_FLASH_001_PRICING.paid.inputPrice)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60 text-right">{formatCurrency(GEMINI_2_0_FLASH_001_PRICING.paid.audioInputPrice || 0)}</td>
+                                                <td className="px-4 py-4 text-servimedia-gray/60 text-right">{formatCurrency(GEMINI_2_0_FLASH_001_PRICING.paid.outputPrice)}</td>
                                             </tr>
                                         </tbody>
                                     </table>
