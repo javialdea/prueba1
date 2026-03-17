@@ -61,6 +61,18 @@ const DEFAULT_MODELS = {
   FLASH: "gemini-2.5-flash"
 };
 
+// ─── Token Usage Logger ─────────────────────────────────────────────────────
+// Lee usageMetadata que Gemini devuelve gratis en cada respuesta.
+// Abre DevTools → Consola y filtra por "[tokens:" para ver el desglose real.
+const logTokenUsage = (operation: string, response: any): void => {
+  const meta = response.usageMetadata;
+  if (!meta) return;
+  const input = meta.promptTokenCount ?? 0;
+  const output = meta.candidatesTokenCount ?? 0;
+  const total = meta.totalTokenCount ?? 0;
+  console.log(`[tokens:${operation}] entrada=${input} | salida=${output} | total=${total}`);
+};
+
 async function retryOperation<T>(operation: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
   try {
     return await operation();
@@ -178,6 +190,7 @@ const processAudio = async (base64Audio: string, mimeType: string): Promise<Anal
     });
 
     const text = response.text;
+    logTokenUsage('processAudio', response);
     if (!text) throw new Error("La IA no devolvió contenido.");
     return JSON.parse(text) as AnalysisResult;
   };
@@ -209,6 +222,7 @@ FORMATO DE RESPUESTA:
 - Al final de tu respuesta, añade siempre una breve sección titulada "💡 Sugerencias Fundéu:" (si aplica al texto), donde ofrezcas 1 o 2 recomendaciones de estilo, precisión léxica o uso normativo basadas en las directrices de la Fundación del Español Urgente (Fundéu) que sean relevantes para el texto analizado.`
     }
   });
+  logTokenUsage('genericChat', response);
   return response.text;
 };
 
@@ -250,6 +264,7 @@ const chatWithDocuments = async (
       systemInstruction: "Eres un asistente de investigación estilo Notebook LM para Servimedia. Tu misión es responder preguntas basándote en los documentos proporcionados.\n\nNORMAS ABSOLUTAS:\n1. BASARSE EN DOCUMENTOS: Si la respuesta no está en los documentos, indícalo, pero intenta ser lo más útil posible relacionando conceptos si es pertinente. Cita nombres de archivos si mencionas datos específicos.\n2. ORTOGRAFÍA Y GRAMÁTICA: Si el usuario te pide que corrijas un texto o su consulta implica redacción, corrige proactivamente todos los errores aplicando estrictamente la normativa de la Real Academia Española (RAE).\n\nFORMATO DE RESPUESTA:\n- REGLA DE FORMATO CRÍTICA: No uses asteriscos (* o **) ni negritas (<b>) para enfatizar o marcar cambios. Usa EXCLUSIVAMENTE etiquetas <u> para subrayado directamente.\n- Al final de tu respuesta, añade siempre una breve sección titulada \"💡 Sugerencias Fundéu:\" (si aplica al texto o contexto), donde ofrezcas 1 o 2 recomendaciones de estilo o uso normativo basadas en la Fundación del Español Urgente (Fundéu)."
     }
   });
+  logTokenUsage('chatWithDocuments', response);
   return response.text;
 };
 
@@ -267,6 +282,7 @@ const chatWithSource = async (history: { role: string, text: string }[], transcr
       systemInstruction: "Eres un asistente para periodistas de Servimedia. Responde preguntas basándote únicamente en la transcripción proporcionada. Sé conciso y cita frases textuales."
     }
   });
+  logTokenUsage('chatWithSource', response);
   return response.text;
 };
 
@@ -387,6 +403,7 @@ DEBES DEVOLVER UN JSON VÁLIDO CON LOS SIGUIENTES CAMPOS:
         temperature: 0.1,
       },
     });
+    logTokenUsage('processPressRelease', response);
     const parsedResult = JSON.parse(response.text || "{}");
     const result: PressReleaseResult = {
       antetitulo: parsedResult.antetitulo || "",
@@ -444,6 +461,7 @@ const verifyManualSelection = async (text: string): Promise<any> => {
       });
 
       let resultText = response.text;
+      logTokenUsage('verifyManualSelection', response);
       if (!resultText) throw new Error("La IA no devolvió contenido.");
 
       console.log("[Gemini] Raw verification response:", resultText);
@@ -504,6 +522,7 @@ Devuelve ÚNICAMENTE un JSON válido: { "headlines": ["titular1", "titular2", "t
       }
     }
   });
+  logTokenUsage('suggestHeadlinesForTopic', response);
   const parsed = JSON.parse(response.text || '{"headlines":[]}');
   return parsed.headlines || [];
 };
@@ -587,6 +606,7 @@ DEBES DEVOLVER UN JSON VÁLIDO CON LOS SIGUIENTES CAMPOS:
         temperature: 0.1,
       },
     });
+    logTokenUsage('generateTeletipoFromText', response);
     const parsed = JSON.parse(response.text || '{}');
     return {
       antetitulo: parsed.antetitulo || '',
