@@ -56,7 +56,6 @@ interface FidelityReport {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const GEMINI_MODEL = 'gemini-2.0-flash-001';        // rápido y preciso para teletype estructurado
-const GEMINI_MODEL_FLASH = 'gemini-2.0-flash-001';  // fidelidad: mismo modelo, ya es muy bueno
 const GEMINI_LOCATION = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -249,7 +248,7 @@ verdict: "Fiel" si score≥85, "Aceptable" si 60-84, "Problemático" si <60.
 Devuelve exclusivamente JSON válido.`;
 
     const response = await ai.models.generateContent({
-        model: GEMINI_MODEL_FLASH,
+        model: GEMINI_MODEL,
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         config: {
             responseMimeType: 'application/json',

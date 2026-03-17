@@ -117,7 +117,7 @@ function buildHtmlEmail(result: ProcessEmailResult): string {
 
     const issuesHtml = (fi.issues ?? []).map(issue => {
         const label = issue.type === 'ok' ? 'OK' : issue.type === 'omission' ? 'OMISSION' : 'DISTORTION';
-        const weight = issue.importance === 'high' ? 'high' : issue.importance === 'medium' ? 'medium' : 'low';
+        const weight = issue.severity === 'high' ? 'high' : issue.severity === 'medium' ? 'medium' : 'low';
         return `<li style="margin-bottom:6px"><span style="color:#6b7280;font-weight:600">[${label} - ${weight}]</span> ${issue.description}</li>`;
     }).join('');
 
