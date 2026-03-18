@@ -120,7 +120,12 @@ function buildHtmlEmail(result: ProcessEmailResult): string {
     }).join('');
 
     const verdictBg = fi.fidelityScore >= 90 ? '#16a34a' : fi.fidelityScore >= 70 ? '#d97706' : '#dc2626';
-    const bodyHtml = (pr.body || '').split('\n\n')
+    // Split on \n\n first; if Gemini returned a single block, fall back to \n
+    const rawBodyParagraphs = (pr.body || '').split('\n\n').filter(p => p.trim());
+    const bodyParagraphs = rawBodyParagraphs.length > 1
+        ? rawBodyParagraphs
+        : (pr.body || '').split('\n').filter(p => p.trim());
+    const bodyHtml = bodyParagraphs
         .map(p => `<p style="margin:0 0 14px 0;font-size:15px;color:#333;line-height:1.8">${p.replace(/\n/g, '<br>')}</p>`)
         .join('');
     const originalHtml = (pr.originalText || '').split('\n')

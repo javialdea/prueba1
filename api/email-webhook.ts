@@ -169,7 +169,7 @@ DEBES DEVOLVER UN JSON VÁLIDO CON LOS SIGUIENTES CAMPOS:
 2. headline: El titular (verbo en presente, claro y factual).
 3. subtitulo: El subtítulo (complementa el titular con un dato clave, verbo en presente, máx 20 palabras).
 4. lead: La entradilla (empieza por sujeto, pasado, responde a las 5W).
-5. body: El cuerpo del teletipo (pasado, oraciones breves, máx ~500 palabras).
+5. body: El cuerpo del teletipo (pasado, oraciones breves, máx ~500 palabras). IMPORTANTE: separa cada párrafo con una línea en blanco (\\n\\n entre párrafos). Mínimo 3 párrafos bien diferenciados.
 6. originalText: Transcripción limpia y completa del texto original proporcionado.
 `;
 
