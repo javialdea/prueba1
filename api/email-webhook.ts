@@ -302,6 +302,10 @@ async function processEmailContent(payload: EmailWebhookPayload): Promise<Proces
     // ── Build Gemini content parts ────────────────────────────────────────────
     let contentParts: any[] = [];
     let contentSource = 'cuerpo del email';
+    // Raw verbatim text when available (Word/body). Used for fidelity comparison
+    // instead of Gemini's own transcription, which can omit or rephrase content.
+    // PDFs go as inlineData so rawOriginalText stays null for them.
+    let rawOriginalText: string | null = null;
     const attachmentCount = payload.attachments?.length ?? 0;
     console.log(`[email-webhook] Attachments received: ${attachmentCount}`);
 
@@ -324,17 +328,20 @@ async function processEmailContent(payload: EmailWebhookPayload): Promise<Proces
         if (isWord(att.mimeType, att.filename)) {
             const text = await extractWordText(att.base64Data);
             if (text) {
+                rawOriginalText = text;
                 contentParts.push({ text: `TEXTO WORD EXTRAÍDO:\n${text}` });
             } else {
                 console.warn('[email-webhook] mammoth returned empty — sending as inlineData');
                 contentParts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } });
             }
         } else if (isPdf(att.mimeType)) {
+            // PDF: sent as native inlineData — no verbatim text extraction possible here
             contentParts.push({ inlineData: { mimeType: 'application/pdf', data: att.base64Data } });
         } else if (att.filename.match(/\.(doc|docx|pdf)$/i)) {
             if (att.filename.match(/\.(doc|docx)$/i)) {
                 const text = await extractWordText(att.base64Data);
                 if (text) {
+                    rawOriginalText = text;
                     contentParts.push({ text: `TEXTO WORD EXTRAÍDO:\n${text}` });
                 } else {
                     contentParts.push({ inlineData: { mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data: att.base64Data } });
@@ -345,11 +352,13 @@ async function processEmailContent(payload: EmailWebhookPayload): Promise<Proces
         } else {
             contentSource = 'cuerpo del email (adjunto no reconocido)';
             const cleanBody = cleanEmailBody(payload.body);
+            rawOriginalText = cleanBody;
             console.warn(`[email-webhook] Unrecognised attachment type ${att.mimeType} — falling back to body`);
             contentParts.push({ text: `TEXTO NOTA DE PRENSA:\n${cleanBody}` });
         }
     } else {
         const cleanBody = cleanEmailBody(payload.body);
+        rawOriginalText = cleanBody;
         console.log(`[email-webhook] No attachment. Cleaned body: ${cleanBody.length} chars`);
         contentParts.push({ text: `TEXTO NOTA DE PRENSA:\n${cleanBody}` });
     }
@@ -359,8 +368,10 @@ async function processEmailContent(payload: EmailWebhookPayload): Promise<Proces
     const pressRelease = await generatePressRelease(ai, contentParts);
 
     // ── Call 2: fidelity report ───────────────────────────────────────────────
+    // Priority: raw verbatim text (Word/body) > Gemini's own transcription > raw payload body
+    // Using raw text avoids false omission flags caused by Gemini summarising the original.
     console.log('[email-webhook] Generating fidelity report...');
-    const originalForFidelity = pressRelease.originalText || payload.body;
+    const originalForFidelity = rawOriginalText ?? pressRelease.originalText ?? payload.body;
     const fidelity = await generateFidelityReport(ai, originalForFidelity, pressRelease);
 
     console.log(`[email-webhook] Done. Verdict: ${fidelity.verdict} (${fidelity.fidelityScore}/100)`);
