@@ -306,12 +306,18 @@ async function processEmailContent(payload: EmailWebhookPayload): Promise<Proces
     console.log(`[email-webhook] Attachments received: ${attachmentCount}`);
 
     if (attachmentCount > 0) {
-        // Find the first PDF or Word attachment, skipping inline images
-        const att = payload.attachments!.find(a =>
-            isPdf(a.mimeType) ||
-            isWord(a.mimeType, a.filename) ||
-            a.filename.match(/\.(doc|docx|pdf)$/i)
-        ) ?? payload.attachments![0];
+        // 3-pass selection to find the press release attachment:
+        // 1st: filename matches press-release conventions (NP, NdP, nota, prensa, comunicado…)
+        // 2nd: prefer Word over PDF (press releases commonly arrive as .docx)
+        // 3rd: fallback to first attachment
+        const PR_FILENAME = /\b(NP|NdP|nota|prensa|comunicado|release|teletipo)\b/i;
+        const isDocOrPdf = (a: AttachmentPayload) =>
+            isPdf(a.mimeType) || isWord(a.mimeType, a.filename) || /\.(doc|docx|pdf)$/i.test(a.filename);
+        const att =
+            payload.attachments!.find(a => isDocOrPdf(a) && PR_FILENAME.test(a.filename)) ??
+            payload.attachments!.find(a => isWord(a.mimeType, a.filename) || /\.(doc|docx)$/i.test(a.filename)) ??
+            payload.attachments!.find(a => isPdf(a.mimeType) || /\.pdf$/i.test(a.filename)) ??
+            payload.attachments![0];
         console.log(`[email-webhook] Processing attachment: ${att.filename} (${att.mimeType})`);
         contentSource = att.filename;
 
