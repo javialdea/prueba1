@@ -167,6 +167,32 @@ function buildHtmlEmail(result: ProcessEmailResult): string {
 </body></html>`;
 }
 
+function buildErrorEmail(originalSubject: string): string {
+    const now = new Date().toLocaleString('es-ES');
+    return `<html lang="es"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:'Helvetica Neue',Arial,sans-serif">
+<div style="max-width:680px;margin:24px auto;background:#fff;border-radius:8px;overflow:hidden">
+
+  <!-- Header -->
+  <div style="background:#333333;padding:20px 28px">
+    <div style="color:#e50051;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase">Servimedia &middot; IA</div>
+    <div style="color:#fff;font-size:18px;font-weight:700;margin-top:4px">Error al generar nota</div>
+  </div>
+
+  <!-- Body -->
+  <div style="padding:28px">
+    <div style="background:#fef2f2;border-left:4px solid #dc2626;padding:16px 20px;border-radius:4px;margin-bottom:24px">
+      <div style="color:#dc2626;font-weight:700;font-size:15px;margin-bottom:8px">&#9888;&#65039; No se pudo procesar tu email</div>
+      <div style="color:#555;font-size:14px;line-height:1.6">El sistema no pudo generar la nota de prensa para el email <strong>"${originalSubject}"</strong>.</div>
+    </div>
+    <p style="color:#333;font-size:15px;line-height:1.7;margin:0 0 8px 0">Por favor, <strong>reenv&iacute;a el email original</strong> para volver a intentarlo.</p>
+    <p style="color:#888;font-size:12px;margin:24px 0 0;text-align:center">Servimedia-IA &middot; ${now}</p>
+  </div>
+
+</div>
+</body></html>`;
+}
+
 /**
  * Sends an HTML email reply via Gmail API using the existing OAuth token.
  */
@@ -427,9 +453,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.log(`[gmail-pubsub] New message IDs: ${newIds.join(', ') || 'none'}`);
 
         for (const msgId of newIds) {
+            // Track sender so we can notify them on error even if processing fails mid-way
+            let toEmail: string | null = null;
+            let emailSubject = '';
+
             try {
                 const email = await fetchAndParseMessage(userEmail, msgId, accessToken);
                 console.log(`[gmail-pubsub] Processing: "${email.subject}" from ${email.from}`);
+
+                // Extract plain email address from "Name <email>" format — needed for error emails too
+                const toMatch = email.from.match(/<([^>]+)>/) || [null, email.from];
+                toEmail = toMatch[1];
+                emailSubject = email.subject;
 
                 if (!email.subject && !email.body) {
                     console.warn(`[gmail-pubsub] Skipping empty message ${msgId}`);
@@ -452,14 +487,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 // ── Send reply with the generated press release ───────────────
                 const replySubject = `✅ Nota generada: ${email.subject}`;
                 const htmlBody = buildHtmlEmail(result);
-
-                // Extract plain email address from "Name <email>" format
-                const toMatch = email.from.match(/<([^>]+)>/) || [null, email.from];
-                const toEmail = toMatch[1];
-
                 await sendGmailReply(toEmail, replySubject, htmlBody, accessToken);
+
             } catch (msgErr: any) {
                 console.error(`[gmail-pubsub] Error processing message ${msgId}:`, msgErr.message);
+
+                // ── Notify sender so they know to retry ──────────────────────
+                if (toEmail) {
+                    try {
+                        const errSubject = `⚠️ Error al generar nota: ${emailSubject}`;
+                        await sendGmailReply(toEmail, errSubject, buildErrorEmail(emailSubject), accessToken);
+                        console.log(`[gmail-pubsub] Error notification sent to ${toEmail}`);
+                    } catch (notifyErr: any) {
+                        console.error(`[gmail-pubsub] Could not send error notification:`, notifyErr.message);
+                    }
+                }
             }
         }
 
