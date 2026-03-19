@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { processEmailContent, ProcessEmailResult } from './email-webhook';
 
 // Vercel: needs enough time to fetch the email + run Gemini (same budget as email-webhook)
-export const config = { maxDuration: 60, bodyParser: { sizeLimit: '1mb' } };
+export const config = { maxDuration: 120, bodyParser: { sizeLimit: '1mb' } };
 
 // ─── Supabase state helpers (stores last processed historyId) ───────────────────
 
@@ -172,8 +172,59 @@ function buildHtmlEmail(result: ProcessEmailResult): string {
 </body></html>`;
 }
 
-function buildErrorEmail(originalSubject: string): string {
+function classifyError(err: Error): { title: string; explanation: string; action: string } {
+    const msg = err.message?.toLowerCase() ?? '';
+
+    if (msg.includes('timeout') || msg.includes('deadline') || msg.includes('timed out')) {
+        return {
+            title: 'La nota tardó demasiado en procesarse',
+            explanation: 'El documento es demasiado extenso o la IA tardó más de lo permitido.',
+            action: 'Reenvía el email. Si el error se repite, prueba con un documento más corto o en formato .docx.',
+        };
+    }
+    if (msg.includes('quota') || msg.includes('resource_exhausted') || msg.includes('429')) {
+        return {
+            title: 'Cuota de la IA temporalmente agotada',
+            explanation: 'El sistema ha procesado demasiadas notas en poco tiempo.',
+            action: 'Espera unos minutos y reenvía el email.',
+        };
+    }
+    if (msg.includes('invalid_argument') || msg.includes('unsupported') || msg.includes('inlinedata')) {
+        return {
+            title: 'Formato de archivo no compatible',
+            explanation: 'El archivo adjunto está en un formato que la IA no puede leer (posiblemente .doc antiguo de Word 97-2003).',
+            action: 'Abre el archivo en Word, guárdalo como <strong>.docx</strong> y reenvía el email.',
+        };
+    }
+    if (msg.includes('oauth') || msg.includes('token') || msg.includes('unauthorized') || msg.includes('401')) {
+        return {
+            title: 'Error de autenticación del sistema',
+            explanation: 'El sistema tuvo un problema interno de autenticación.',
+            action: 'Reenvía el email. Si el error persiste, contacta con el administrador.',
+        };
+    }
+    if (msg.includes('mammoth') || msg.includes('word') || msg.includes('doc')) {
+        return {
+            title: 'No se pudo leer el archivo Word',
+            explanation: 'El archivo .doc o .docx adjunto no pudo procesarse correctamente.',
+            action: 'Guarda el archivo como <strong>.docx</strong> desde Word y reenvía el email.',
+        };
+    }
+    return {
+        title: 'Error interno al procesar la nota',
+        explanation: 'Se produjo un error inesperado en el sistema.',
+        action: 'Reenvía el email original para volver a intentarlo. Si el error persiste, contacta con el administrador.',
+    };
+}
+
+function buildErrorEmail(originalSubject: string, err?: Error): string {
     const now = new Date().toLocaleString('es-ES');
+    const info = err ? classifyError(err) : {
+        title: 'No se pudo procesar tu email',
+        explanation: 'El sistema no pudo generar la nota de prensa.',
+        action: 'Reenvía el email original para volver a intentarlo.',
+    };
+
     return `<html lang="es"><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#f4f4f4;font-family:'Helvetica Neue',Arial,sans-serif">
 <div style="max-width:680px;margin:24px auto;background:#fff;border-radius:8px;overflow:hidden">
@@ -187,10 +238,14 @@ function buildErrorEmail(originalSubject: string): string {
   <!-- Body -->
   <div style="padding:28px">
     <div style="background:#fef2f2;border-left:4px solid #dc2626;padding:16px 20px;border-radius:4px;margin-bottom:24px">
-      <div style="color:#dc2626;font-weight:700;font-size:15px;margin-bottom:8px">&#9888;&#65039; No se pudo procesar tu email</div>
-      <div style="color:#555;font-size:14px;line-height:1.6">El sistema no pudo generar la nota de prensa para el email <strong>"${originalSubject}"</strong>.</div>
+      <div style="color:#dc2626;font-weight:700;font-size:15px;margin-bottom:8px">&#9888;&#65039; ${info.title}</div>
+      <div style="color:#555;font-size:14px;line-height:1.6;margin-bottom:6px">Email: <strong>"${originalSubject}"</strong></div>
+      <div style="color:#555;font-size:14px;line-height:1.6">${info.explanation}</div>
     </div>
-    <p style="color:#333;font-size:15px;line-height:1.7;margin:0 0 8px 0">Por favor, <strong>reenv&iacute;a el email original</strong> para volver a intentarlo.</p>
+    <div style="background:#f0f9ff;border-left:4px solid #0284c7;padding:14px 18px;border-radius:4px">
+      <div style="color:#0284c7;font-weight:700;font-size:13px;margin-bottom:6px">&#128161; Qué hacer</div>
+      <p style="color:#333;font-size:14px;line-height:1.7;margin:0">${info.action}</p>
+    </div>
     <p style="color:#888;font-size:12px;margin:24px 0 0;text-align:center">Servimedia-IA &middot; ${now}</p>
   </div>
 
@@ -501,7 +556,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 if (toEmail) {
                     try {
                         const errSubject = `⚠️ Error al generar nota: ${emailSubject}`;
-                        await sendGmailReply(toEmail, errSubject, buildErrorEmail(emailSubject), accessToken);
+                        await sendGmailReply(toEmail, errSubject, buildErrorEmail(emailSubject, msgErr instanceof Error ? msgErr : new Error(String(msgErr))), accessToken);
                         console.log(`[gmail-pubsub] Error notification sent to ${toEmail}`);
                     } catch (notifyErr: any) {
                         console.error(`[gmail-pubsub] Could not send error notification:`, notifyErr.message);

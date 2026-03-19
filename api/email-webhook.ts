@@ -115,6 +115,15 @@ function cleanEmailBody(raw: string): string {
 const PRESS_RELEASE_INSTRUCTION = `
 Eres el Redactor Jefe de la Agencia de noticias Servimedia. Tu misión es transformar el material adjunto en un TELETIPO DE AGENCIA PERFECTO, siguiendo con absoluta precisión las normas del periodismo de agencia en español.
 
+IDIOMA DE SALIDA: Redacta el teletipo SIEMPRE en castellano, independientemente del idioma del documento fuente (inglés, francés, catalán, gallego, euskera, etc.). El original puede estar en cualquier lengua — la nota de agencia siempre se produce en español.
+
+FIDELIDAD A LA FUENTE — NORMA ABSOLUTA E INAMOVIBLE:
+- Usa ÚNICAMENTE la información contenida en el documento proporcionado. Nada más.
+- PROHIBIDO inventar, suponer, completar o enriquecer con datos de tu conocimiento previo: ni cifras, ni fechas, ni nombres, ni cargos, ni declaraciones, ni contexto externo.
+- Si un dato no aparece explícitamente en el documento fuente, NO lo incluyas en el teletipo.
+- Las citas textuales deben reproducir exactamente lo que dice el documento. Nunca atribuyas declaraciones que no estén en el texto original.
+- Si el documento fuente es escaso en información, el teletipo será más corto. Es preferible un teletipo breve y fiel a uno largo con datos inventados.
+
 NORMAS DE REDACCIÓN OBLIGATORIAS — aplícalas todas sin excepción:
 
 ORTOGRAFÍA Y PUNTUACIÓN
@@ -331,8 +340,13 @@ async function processEmailContent(payload: EmailWebhookPayload): Promise<Proces
                 rawOriginalText = text;
                 contentParts.push({ text: `TEXTO WORD EXTRAÍDO:\n${text}` });
             } else {
-                console.warn('[email-webhook] mammoth returned empty — sending as inlineData');
-                contentParts.push({ inlineData: { mimeType: att.mimeType, data: att.base64Data } });
+                // Gemini only supports .docx (Office Open XML) and PDF as inlineData.
+                // Old binary .doc (Word 97-2003) is rejected by Gemini — fall back to email body.
+                console.warn('[email-webhook] mammoth failed on Word file — falling back to email body (old .doc format not supported by Gemini)');
+                const cleanBody = cleanEmailBody(payload.body);
+                rawOriginalText = cleanBody;
+                contentSource = 'cuerpo del email (Word .doc no procesable)';
+                contentParts.push({ text: `TEXTO NOTA DE PRENSA:\n${cleanBody}` });
             }
         } else if (isPdf(att.mimeType)) {
             // PDF: sent as native inlineData — no verbatim text extraction possible here
@@ -344,7 +358,12 @@ async function processEmailContent(payload: EmailWebhookPayload): Promise<Proces
                     rawOriginalText = text;
                     contentParts.push({ text: `TEXTO WORD EXTRAÍDO:\n${text}` });
                 } else {
-                    contentParts.push({ inlineData: { mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data: att.base64Data } });
+                    // Old .doc binary not supported by Gemini as inlineData — fall back to email body
+                    console.warn('[email-webhook] mammoth failed (extension-only match) — falling back to email body');
+                    const cleanBody = cleanEmailBody(payload.body);
+                    rawOriginalText = cleanBody;
+                    contentSource = 'cuerpo del email (Word .doc no procesable)';
+                    contentParts.push({ text: `TEXTO NOTA DE PRENSA:\n${cleanBody}` });
                 }
             } else {
                 contentParts.push({ inlineData: { mimeType: 'application/pdf', data: att.base64Data } });
