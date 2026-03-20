@@ -1,7 +1,7 @@
 
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { AnalysisResult as AnalysisResultType, PressReleaseResult as PressReleaseResultType, TopicDetail } from '../types';
-import { FileText, List, Download, PlayCircle, PauseCircle, MessageSquare, Share2, Send, Sparkles, ShieldCheck, Info, Loader2, ArrowLeft } from 'lucide-react';
+import { FileText, List, Download, PlayCircle, PauseCircle, MessageSquare, Share2, Send, Sparkles, ShieldCheck, Info, Loader2, ArrowLeft, PenLine } from 'lucide-react';
 import { geminiService } from '../services/geminiService';
 import { jsPDF } from 'jspdf';
 import { PressReleaseResult as PressReleaseResultComponent } from './PressReleaseResult';
@@ -164,9 +164,13 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
   const [isTeletipoLoading, setIsTeletipoLoading] = useState(false);
 
   // Context modal state
-  const [pendingTeletipo, setPendingTeletipo] = useState<{ headline: string; topicName: string } | null>(null);
+  const [pendingTeletipo, setPendingTeletipo] = useState<{ headline: string; topicName: string; isCustom?: boolean } | null>(null);
   const [speakerWho, setSpeakerWho] = useState('');
   const [speakerWhere, setSpeakerWhere] = useState('');
+
+  // Custom headline input
+  const [customHeadline, setCustomHeadline] = useState('');
+  const [teletipoLoadingMsg, setTeletipoLoadingMsg] = useState('Redactando teletipo...');
 
   const buildTranscriptionText = () =>
     (result.transcription || []).map(s => `[${s.timestamp}] ${s.text}`).join('\n');
@@ -191,24 +195,38 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
     setPendingTeletipo({ headline, topicName: '' });
   };
 
+  const handleCustomHeadlineGenerate = () => {
+    const h = customHeadline.trim();
+    if (!h) return;
+    setPendingTeletipo({ headline: h, topicName: '', isCustom: true });
+  };
+
   const handleConfirmGenerate = async () => {
     if (!pendingTeletipo) return;
     const contextParts = [speakerWho, speakerWhere].filter(Boolean);
     const speakerContext = contextParts.length ? contextParts.join(' — ') : undefined;
+    const { headline, topicName, isCustom } = pendingTeletipo;
     setPendingTeletipo(null);
     setSpeakerWho('');
     setSpeakerWhere('');
     setIsTeletipoLoading(true);
     try {
+      let transcriptionSource = buildTranscriptionText();
+      if (isCustom) {
+        setTeletipoLoadingMsg('Analizando transcripción...');
+        transcriptionSource = await geminiService.extractRelevantFragments(transcriptionSource, headline);
+        setTeletipoLoadingMsg('Redactando teletipo...');
+      }
       const teletipo = await geminiService.generateTeletipoFromText(
-        buildTranscriptionText(), pendingTeletipo.topicName, pendingTeletipo.headline, speakerContext
+        transcriptionSource, topicName, headline, speakerContext
       );
       setTeletipoOverlay(teletipo);
-      onSaveTeletipo?.(teletipo, `Teletipo — ${pendingTeletipo.headline}`);
+      onSaveTeletipo?.(teletipo, `Teletipo — ${headline}`);
     } catch {
       // silently fail — toast will disappear
     } finally {
       setIsTeletipoLoading(false);
+      setTeletipoLoadingMsg('Redactando teletipo...');
     }
   };
 
@@ -374,6 +392,30 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
                   </span>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Custom headline input */}
+          <div className="bg-white p-5 md:p-10 rounded-[2rem] border border-servimedia-border shadow-sm">
+            <h3 className="text-[11px] font-black text-servimedia-orange uppercase tracking-[0.4em] mb-5 md:mb-10 border-b border-servimedia-border pb-4 md:pb-6 flex items-center gap-3">
+              <PenLine className="w-5 h-5" /> Tu propio titular
+            </h3>
+            <div className="space-y-4">
+              <textarea
+                value={customHeadline}
+                onChange={e => setCustomHeadline(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCustomHeadlineGenerate(); } }}
+                placeholder="Escribe el titular exacto que quieres desarrollar..."
+                rows={3}
+                className="w-full border border-servimedia-border rounded-xl px-4 py-3 text-sm md:text-base font-serif text-servimedia-gray outline-none focus:border-servimedia-orange resize-none transition-colors"
+              />
+              <button
+                onClick={handleCustomHeadlineGenerate}
+                disabled={!customHeadline.trim()}
+                className="w-full py-3 rounded-xl bg-servimedia-orange text-white text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-opacity disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Generar teletipo →
+              </button>
             </div>
           </div>
         </div>
@@ -636,7 +678,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ result, audioFil
       {isTeletipoLoading && (
         <div className="fixed bottom-6 right-6 z-50 bg-white shadow-2xl rounded-2xl px-5 py-3 flex items-center gap-3 border border-servimedia-border animate-in slide-in-from-bottom-4">
           <div className="w-4 h-4 border-2 border-servimedia-pink border-t-transparent rounded-full animate-spin shrink-0" />
-          <p className="text-xs font-black text-servimedia-gray uppercase tracking-widest">Redactando teletipo...</p>
+          <p className="text-xs font-black text-servimedia-gray uppercase tracking-widest">{teletipoLoadingMsg}</p>
         </div>
       )}
 

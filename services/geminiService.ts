@@ -572,6 +572,41 @@ Devuelve ÚNICAMENTE un JSON válido: { "headlines": ["titular1", "titular2", "t
   return parsed.headlines || [];
 };
 
+// --- EXTRACT RELEVANT FRAGMENTS ---
+// Given a full transcription and a custom headline, extracts only the fragments
+// directly relevant to that headline, discarding unrelated topics.
+const extractRelevantFragments = async (
+  transcriptionText: string,
+  headline: string
+): Promise<string> => {
+  const response = await (await getAI()).models.generateContent({
+    model: DEFAULT_MODELS.FLASH,
+    contents: {
+      parts: [{
+        text: `Eres un editor de la Agencia Servimedia. A partir de la transcripción siguiente, extrae ÚNICAMENTE los fragmentos necesarios para redactar un teletipo sobre este titular:
+
+TITULAR: "${headline}"
+
+INSTRUCCIONES:
+1. Lee la transcripción completa con sus timestamps.
+2. Selecciona SOLO los fragmentos que hablen directamente del tema del titular. Descarta todo lo que sea sobre otros asuntos.
+3. Para cada fragmento, indica quién habla si puedes inferirlo (periodista, político, nombre, cargo). Usa el formato [HABLANTE: X] antes del fragmento. Si no puedes inferirlo, omite la indicación.
+4. Mantén los timestamps originales tal como aparecen.
+5. Si varios intervinientes hablan sobre el mismo tema, inclúyelos todos y diferéncialos.
+6. No resumas ni parafrasees — copia el texto literal de cada fragmento seleccionado.
+
+TRANSCRIPCIÓN COMPLETA:
+${transcriptionText}
+
+Devuelve únicamente los fragmentos seleccionados con sus timestamps. No añadas explicaciones ni comentarios.`
+      }]
+    },
+    config: { temperature: 0.1 }
+  });
+  logTokenUsage('extractRelevantFragments', response);
+  return response.text?.trim() || transcriptionText;
+};
+
 // --- GENERATE TELETIPO FROM TEXT ---
 // Generates a full press release teletipo from transcription text + a pre-selected headline
 const generateTeletipoFromText = async (
@@ -703,5 +738,5 @@ const startLiveTranscription = async (
   return session;
 };
 
-export const geminiService = { processAudio, processPressRelease, chatWithSource, genericChat, chatWithDocuments, verifyManualSelection, startLiveTranscription, suggestHeadlinesForTopic, generateTeletipoFromText };
+export const geminiService = { processAudio, processPressRelease, chatWithSource, genericChat, chatWithDocuments, verifyManualSelection, startLiveTranscription, suggestHeadlinesForTopic, extractRelevantFragments, generateTeletipoFromText };
 
