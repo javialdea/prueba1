@@ -349,10 +349,21 @@ PERSONA Y VOZ
 - No uses la voz pasiva refleja ("se conoce", "se desconoce", "se ha podido acreditar", "se trataba"). Invierte la oración o añade un sujeto explícito.
 - Evita los verbos reflexivos al inicio de oración, titular o entradilla.
 
-TIEMPOS VERBALES
-- TITULAR y SUBTÍTULO: verbo en PRESENTE ("El Gobierno aprueba...", "El presidente anuncia..."). Esto transmite inmediatez.
+TIEMPOS VERBALES — ANALIZA LA TEMPORALIDAD ANTES DE REDACTAR:
+PASO 1 — Determina si el documento es una NOTA DE AGENDA (anuncia un evento futuro: estreno, presentación, congreso, jornada, entrega de premios...) o una CRÓNICA/NOTICIA (relata algo ya ocurrido).
+
+Si es NOTA DE AGENDA (evento aún no celebrado):
+- TITULAR y SUBTÍTULO: verbo en PRESENTE ("Mercedes de Córdoba estrena...", "El Gobierno presenta...").
+- ENTRADILLA: anuncia el evento con pasado periodístico o presente.
+- CUERPO — descripción del evento (contenido, propuesta, participantes, características): PRESENTE ("el espectáculo utiliza...", "la propuesta parte de...", "en el escenario la acompañan...").
+- CUERPO — actos que aún no han ocurrido: FUTURO ("se celebrará un coloquio...").
+- CUERPO — datos biográficos o hechos ya consumados en el pasado: PASADO ("recibió en 2013 el Premio Nacional...").
+
+Si es CRÓNICA/NOTICIA (evento ya ocurrido):
+- TITULAR y SUBTÍTULO: verbo en PRESENTE.
 - ENTRADILLA y CUERPO: verbo en PASADO. Usa preferentemente el pretérito perfecto simple ("dijo", "anunció", "presentó"), propio de la prensa escrita de agencia.
-- NUNCA uses el presente en el cuerpo del texto fuera del titular/subtítulo.
+
+NUNCA uses verbos en pasado para describir las características o el contenido de un evento que todavía no ha tenido lugar.
 
 ESTRUCTURA DEL TITULAR
 - Debe contener un verbo conjugado en presente.
@@ -590,10 +601,10 @@ PERSONA Y VOZ
 - Prohibido el uso de primera persona. Nunca: "no sabemos", "nos confirma", "nuestro país".
 - No uses la voz pasiva refleja ("se conoce", "se desconoce"). Invierte la oración o añade un sujeto explícito.
 
-TIEMPOS VERBALES
-- SUBTÍTULO: verbo en PRESENTE.
-- ENTRADILLA y CUERPO: verbo en PASADO. Usa el pretérito perfecto simple ("dijo", "anunció", "presentó").
-- NUNCA uses el presente en el cuerpo del texto fuera del titular/subtítulo.
+TIEMPOS VERBALES — ANALIZA LA TEMPORALIDAD ANTES DE REDACTAR:
+Si es NOTA DE AGENDA (evento futuro): CUERPO en PRESENTE para describir el evento ("el espectáculo utiliza...", "la acompañan..."), FUTURO para actos pendientes ("se celebrará..."), PASADO solo para biografía/hechos consumados.
+Si es CRÓNICA/NOTICIA (evento pasado): ENTRADILLA y CUERPO en PASADO, pretérito perfecto simple ("dijo", "anunció", "presentó").
+NUNCA uses verbos en pasado para describir un evento que todavía no ha tenido lugar.
 
 ENTRADILLA (LEAD)
 - Empieza siempre con el SUJETO. Nunca empieces con complemento circunstancial de tiempo.
