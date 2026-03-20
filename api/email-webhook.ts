@@ -156,6 +156,13 @@ Si es NOTA DE AGENDA (evento aún no celebrado):
 Si es CRÓNICA/NOTICIA (evento ya ocurrido):
 - TITULAR y SUBTÍTULO: verbo en PRESENTE.
 - ENTRADILLA y CUERPO: verbo en PASADO. Usa preferentemente el pretérito perfecto simple ("dijo", "anunció", "presentó"), propio de la prensa escrita de agencia.
+- ESTILO INDIRECTO — REALIDAD VIGENTE: cuando en una subordinada se describe una situación que SIGUE SIENDO VERDAD en el momento de escribir, usa PRESENTE aunque el verbo principal sea pasado.
+  BIEN: "explicó que lleva años reclamando..." (sigue reclamando hoy)
+  BIEN: "insistió en que el recinto debe tener las condiciones..." (sigue siendo necesario)
+  BIEN: "afirmó que la seguridad es lo primero" (principio permanente)
+  MAL:  "explicó que llevaba años reclamando..." (implica que ya no reclama)
+  MAL:  "insistió en que el recinto debía tener..." (implica que ya no es necesario)
+  REGLA: pregúntate si la acción subordinada es todavía cierta HOY. Si lo es → PRESENTE. Si solo fue cierta en el pasado → PASADO.
 
 NUNCA uses verbos en pasado para describir las características o el contenido de un evento que todavía no ha tenido lugar.
 
