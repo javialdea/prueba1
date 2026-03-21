@@ -11,19 +11,32 @@ interface PressReleaseResultProps {
 
 export const PressReleaseResult: React.FC<PressReleaseResultProps> = ({ result, pdfFile, onSaveEdits }) => {
   const [copied, setCopied] = useState(false);
+  const [selectedVariant, setSelectedVariant] = useState(0);
   const [antetitulo, setAntetitulo] = useState(result.finalAntetitulo || result.antetitulo);
   const [headline, setHeadline] = useState(result.finalHeadline || result.headline);
   const [subtitulo, setSubtitulo] = useState(result.finalSubtitulo || result.subtitulo);
   const [lead, setLead] = useState(result.finalLead || result.lead);
   const [body, setBody] = useState(result.finalBody || result.body);
 
+  const variants = [
+    { headline: result.headline, lead: result.lead },
+    ...(result.alternatives || []),
+  ];
+
   useEffect(() => {
+    setSelectedVariant(0);
     setAntetitulo(result.finalAntetitulo || result.antetitulo);
     setHeadline(result.finalHeadline || result.headline);
     setSubtitulo(result.finalSubtitulo || result.subtitulo);
     setLead(result.finalLead || result.lead);
     setBody(result.finalBody || result.body);
   }, [result]);
+
+  const handleSelectVariant = (index: number) => {
+    setSelectedVariant(index);
+    setHeadline(variants[index].headline);
+    setLead(variants[index].lead);
+  };
 
   const handleCopy = () => {
     const text = `${antetitulo}\n\n${headline}\n\n${subtitulo}\n\n${lead}\n\n${body}`;
@@ -83,6 +96,31 @@ export const PressReleaseResult: React.FC<PressReleaseResultProps> = ({ result, 
 
           <div className="flex-grow overflow-y-auto p-12 bg-white custom-scrollbar">
             <div className="max-w-3xl mx-auto space-y-12">
+
+              {variants.length > 1 && (
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.4em] text-servimedia-gray/30 mb-4">Versiones del Titular</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {variants.map((v, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleSelectVariant(i)}
+                        className={`text-left p-4 rounded-xl border-2 transition-all ${
+                          selectedVariant === i
+                            ? 'border-servimedia-orange bg-servimedia-orange/5'
+                            : 'border-servimedia-border hover:border-servimedia-orange/40'
+                        }`}
+                      >
+                        <span className={`text-[9px] font-black uppercase tracking-widest block mb-2 ${
+                          selectedVariant === i ? 'text-servimedia-orange' : 'text-servimedia-gray/30'
+                        }`}>Versión {i + 1}</span>
+                        <p className="text-xs font-black text-servimedia-gray uppercase italic leading-tight line-clamp-3">{v.headline}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <p className="text-[9px] font-black uppercase tracking-[0.4em] text-servimedia-orange/50 mb-2">Antetítulo</p>
                 <textarea

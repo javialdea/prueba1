@@ -26,6 +26,11 @@ export interface AnalysisResult {
   isVerifyingManual?: boolean;
 }
 
+export interface PressReleaseAlternative {
+  headline: string;
+  lead: string;
+}
+
 export interface PressReleaseResult {
   antetitulo: string;
   headline: string;
@@ -34,6 +39,7 @@ export interface PressReleaseResult {
   body: string;
   originalText: string;
   userAngle?: string;
+  alternatives?: PressReleaseAlternative[];
   finalAntetitulo?: string;
   finalHeadline?: string;
   finalSubtitulo?: string;

@@ -399,11 +399,16 @@ CITAS Y DECLARACIONES
 
 DEBES DEVOLVER UN JSON VÁLIDO CON LOS SIGUIENTES CAMPOS:
 1. antetitulo: El antetítulo (3-6 palabras, sin verbo, enmarca el tema: "Economía", "Política exterior", "Acuerdo laboral"…).
-2. headline: El titular (verbo en presente, claro y factual).
+2. headline: El titular PRINCIPAL — versión 1 (verbo en presente, claro y factual).
 3. subtitulo: El subtítulo (complementa el titular con un dato clave, verbo en presente, máx 20 palabras).
-4. lead: La entradilla (empieza por sujeto, pasado, responde a las 5W).
+4. lead: La entradilla PRINCIPAL — versión 1 (empieza por sujeto, pasado, responde a las 5W).
 5. body: El cuerpo del teletipo (pasado, oraciones breves, máx ~500 palabras).
 6. originalText: Transcripción limpia y completa del texto original proporcionado.
+7. alternatives: Array con exactamente 2 versiones alternativas del titular y la entradilla.
+   - Versión 2: mismo hecho, distinta estructura sintáctica o ángulo de enfoque del titular.
+   - Versión 3: mismo hecho, distinto protagonista o dato clave destacado en el titular.
+   Cada objeto contiene: "headline" (verbo en presente) y "lead" (empieza por sujeto, en pasado).
+   Las tres versiones deben ser claramente distintas entre sí.
   `;
 
   return await retryOperation(async () => {
@@ -449,10 +454,21 @@ DEBES DEVOLVER UN JSON VÁLIDO CON LOS SIGUIENTES CAMPOS:
             lead: { type: Type.STRING },
             body: { type: Type.STRING },
             originalText: { type: Type.STRING },
+            alternatives: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  headline: { type: Type.STRING },
+                  lead: { type: Type.STRING },
+                },
+                required: ["headline", "lead"],
+              },
+            },
           },
-          required: ["antetitulo", "headline", "subtitulo", "lead", "body", "originalText"],
+          required: ["antetitulo", "headline", "subtitulo", "lead", "body", "originalText", "alternatives"],
         },
-        temperature: 0.1,
+        temperature: 0.3,
       },
     });
     logTokenUsage('processPressRelease', response);
@@ -465,6 +481,7 @@ DEBES DEVOLVER UN JSON VÁLIDO CON LOS SIGUIENTES CAMPOS:
       body: parsedResult.body || "",
       originalText: parsedResult.originalText || sourceTextForDisplay,
       userAngle: userAngle,
+      alternatives: parsedResult.alternatives || [],
     };
     return result;
   });
