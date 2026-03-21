@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Javier Aldea
+ * Todos los derechos reservados.
+ * Este software es propiedad de Javier Aldea - Aldea Mas Innovación y Periodismo.
+ * Queda prohibida su reproducción, distribución o uso sin autorización expresa.
+ */
 import { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { Session } from '@supabase/supabase-js';

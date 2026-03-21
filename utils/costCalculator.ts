@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Javier Aldea
+ * Todos los derechos reservados.
+ * Este software es propiedad de Javier Aldea - Aldea Mas Innovación y Periodismo.
+ * Queda prohibida su reproducción, distribución o uso sin autorización expresa.
+ */
 // Gemini API Pricing Calculator
 // Based on official GCP billing account prices (EUR) — March 2026
 // Source: Cuenta de facturación GCP — "Precio de Mi cuenta de facturación 1.csv"

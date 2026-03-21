@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Javier Aldea
+ * Todos los derechos reservados.
+ * Este software es propiedad de Javier Aldea - Aldea Mas Innovación y Periodismo.
+ * Queda prohibida su reproducción, distribución o uso sin autorización expresa.
+ */
 // utils/tokenStore.ts
 // In-memory store for real Gemini token usage accumulated during a browser session.
 // No external dependencies — plain JS pub/sub pattern.

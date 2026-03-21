@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 Javier Aldea
  * Todos los derechos reservados.
- * Este software es propiedad de Javier Aldea y solo es utilizable por Servimedia.
+ * Este software es propiedad de Javier Aldea - Aldea Mas Innovación y Periodismo.
  * Queda prohibida su reproducción, distribución o uso sin autorización expresa.
  */
 import React, { useState, useEffect } from 'react';
@@ -54,6 +54,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onOpe
     const [stats, setStats] = useState({ totalAudios: 0, totalPressReleases: 0, totalUsers: 0 });
     const [regKey, setRegKey] = useState('');
     const [geminiKey, setGeminiKey] = useState('');
+    const [writingRules, setWritingRules] = useState('');
+    const [savingRules, setSavingRules] = useState(false);
     const [savingKey, setSavingKey] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [costs, setCosts] = useState<CostData | null>(null);
@@ -110,6 +112,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onOpe
 
             if (gError) console.error('Error fetching gemini key:', gError);
             if (gData) setGeminiKey(gData.value);
+
+            // Fetch Writing Rules
+            const { data: wrData } = await supabase
+                .from('app_settings')
+                .select('value')
+                .eq('id', 'writing_rules')
+                .maybeSingle();
+            if (wrData) setWritingRules(wrData.value);
 
             // Fetch GLOBAL stats via admin RPC (bypasses RLS)
             const { data: countData, error: countError } = await supabase
@@ -667,6 +677,51 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ isOpen, onClose, onOpe
                                     >
                                         {savingKey ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                                         {savingKey ? 'Guardando...' : 'Guardar API Key'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="flex items-center gap-3 mb-4">
+                                    <Settings className="w-5 h-5 text-servimedia-pink" />
+                                    <h3 className="text-sm font-black text-servimedia-gray uppercase tracking-wider">Reglas de Redacción</h3>
+                                </div>
+                                <div className="bg-servimedia-light/30 rounded-3xl p-8 border border-servimedia-border space-y-6">
+                                    <div>
+                                        <label className="text-[10px] font-black text-servimedia-gray/40 uppercase tracking-[0.3em] block mb-3 ml-2">
+                                            Normas periodísticas personalizadas
+                                        </label>
+                                        <textarea
+                                            value={writingRules}
+                                            onChange={(e) => setWritingRules(e.target.value)}
+                                            placeholder="Introduce aquí las normas de redacción de tu organización. Si se deja vacío, se usarán las reglas por defecto."
+                                            rows={14}
+                                            className="w-full p-4 bg-white border border-servimedia-border rounded-2xl focus:ring-4 focus:ring-servimedia-pink/10 outline-none font-mono text-sm transition-all mb-4 resize-y"
+                                        />
+                                        <p className="text-[10px] text-servimedia-gray/40 px-2 leading-relaxed">
+                                            Estas reglas sustituyen las normas de redacción por defecto en todos los teletipos generados, tanto desde la app como desde el pipeline de email. Deja el campo vacío para usar las normas por defecto.
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={async () => {
+                                            setSavingRules(true);
+                                            try {
+                                                const { error } = await supabase
+                                                    .from('app_settings')
+                                                    .upsert({ id: 'writing_rules', value: writingRules });
+                                                if (error) throw error;
+                                                setMessage({ type: 'success', text: 'Reglas de redacción actualizadas correctamente' });
+                                                setTimeout(() => setMessage(null), 3000);
+                                            } catch (err: any) {
+                                                setMessage({ type: 'error', text: `Error: ${err.message || 'Error al guardar las reglas'}` });
+                                            } finally {
+                                                setSavingRules(false);
+                                            }
+                                        }}
+                                        className="w-full py-4 bg-servimedia-pink text-white rounded-2xl font-black uppercase tracking-wider hover:bg-servimedia-pink/90 transition-all flex items-center justify-center gap-2 shadow-lg shadow-servimedia-pink/20"
+                                    >
+                                        {savingRules ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                                        {savingRules ? 'Guardando...' : 'Guardar Reglas'}
                                     </button>
                                 </div>
                             </div>

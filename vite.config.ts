@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Javier Aldea
+ * Todos los derechos reservados.
+ * Este software es propiedad de Javier Aldea - Aldea Mas Innovación y Periodismo.
+ * Queda prohibida su reproducción, distribución o uso sin autorización expresa.
+ */
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';

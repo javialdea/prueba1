@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 Javier Aldea
  * Todos los derechos reservados.
- * Este software es propiedad de Javier Aldea y solo es utilizable por Servimedia.
+ * Este software es propiedad de Javier Aldea - Aldea Mas Innovación y Periodismo.
  * Queda prohibida su reproducción, distribución o uso sin autorización expresa.
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react';

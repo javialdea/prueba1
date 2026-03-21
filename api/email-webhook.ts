@@ -1,12 +1,42 @@
 /*
  * Copyright (c) 2026 Javier Aldea
  * Todos los derechos reservados.
- * Este software es propiedad de Javier Aldea y solo es utilizable por Servimedia.
+ * Este software es propiedad de Javier Aldea - Aldea Mas Innovación y Periodismo.
  * Queda prohibida su reproducción, distribución o uso sin autorización expresa.
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI, Type } from '@google/genai';
 import mammoth from 'mammoth';
+import { DEFAULT_WRITING_RULES } from '../config/defaultWritingRules';
+
+// ─── Writing Rules loader (Supabase REST, service role) ───────────────────────
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+let cachedWritingRules: string | null = null;
+let writingRulesCacheExpiry = 0;
+
+async function loadWritingRules(): Promise<string> {
+    const now = Date.now();
+    if (cachedWritingRules && now < writingRulesCacheExpiry) return cachedWritingRules;
+    try {
+        if (SUPABASE_URL && SUPABASE_KEY) {
+            const res = await fetch(
+                `${SUPABASE_URL}/rest/v1/app_settings?id=eq.writing_rules&select=value`,
+                { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+            );
+            const data = await res.json();
+            if (Array.isArray(data) && data[0]?.value) {
+                cachedWritingRules = data[0].value;
+                writingRulesCacheExpiry = now + 5 * 60 * 1000;
+                return cachedWritingRules!;
+            }
+        }
+    } catch {
+        // fall through to defaults
+    }
+    return DEFAULT_WRITING_RULES;
+}
 
 // Vercel: gemini-2.5-pro puede tardar 30-50 s — ampliamos a 120 s para no arriesgar timeout
 export const config = { maxDuration: 120, bodyParser: { sizeLimit: '50mb' } };
@@ -118,7 +148,8 @@ function cleanEmailBody(raw: string): string {
 // ─── Gemini Call 1: Nota de Prensa ───────────────────────────────────────────
 // Prompt is IDENTICAL to processPressRelease in geminiService.ts
 
-const PRESS_RELEASE_INSTRUCTION = `
+function buildPressReleaseInstruction(writingRules: string): string {
+    return `
 Eres el Redactor Jefe de la Agencia de noticias Servimedia. Tu misión es transformar el material adjunto en un TELETIPO DE AGENCIA PERFECTO, siguiendo con absoluta precisión las normas del periodismo de agencia en español.
 
 IDIOMA DE SALIDA: Redacta el teletipo SIEMPRE en castellano, independientemente del idioma del documento fuente (inglés, francés, catalán, gallego, euskera, etc.). El original puede estar en cualquier lengua — la nota de agencia siempre se produce en español.
@@ -130,72 +161,7 @@ FIDELIDAD A LA FUENTE — NORMA ABSOLUTA E INAMOVIBLE:
 - Las citas textuales deben reproducir exactamente lo que dice el documento. Nunca atribuyas declaraciones que no estén en el texto original.
 - Si el documento fuente es escaso en información, el teletipo será más corto. Es preferible un teletipo breve y fiel a uno largo con datos inventados.
 
-NORMAS DE REDACCIÓN OBLIGATORIAS — aplícalas todas sin excepción:
-
-ORTOGRAFÍA Y PUNTUACIÓN
-- Ortografía impecable, sin faltas ni tildes olvidadas.
-- Usa siempre los signos de puntuación correctamente.
-- Los prefijos se escriben unidos a la palabra: "exministro", "expresidente". Solo se separan si afectan a dos palabras: "ex secretario general".
-- Cuando introduzcas las siglas de una organización, escribe primero el nombre completo y después las siglas entre paréntesis. Excepción: siglas muy conocidas (PP, CCOO, UGT).
-
-MAYÚSCULAS Y MINÚSCULAS
-- Nombres propios de instituciones, en mayúsculas: Guardia Civil, Policía Nacional, Ministerio de Educación.
-- Cargos de personas, en minúscula: ministro, director, portavoz.
-- Gentilicios y adjetivos, en minúscula: español, brasileño, europeo.
-- Meses y días de la semana, siempre en minúscula: octubre, lunes.
-
-PERSONA Y VOZ
-- Prohibido el uso de primera persona. Nunca: "no sabemos", "nos confirma", "nuestro país".
-- No uses la voz pasiva refleja ("se conoce", "se desconoce", "se ha podido acreditar", "se trataba"). Invierte la oración o añade un sujeto explícito.
-- Evita los verbos reflexivos al inicio de oración, titular o entradilla.
-
-TIEMPOS VERBALES — ANALIZA LA TEMPORALIDAD ANTES DE REDACTAR:
-PASO 1 — Determina si el documento es una NOTA DE AGENDA (anuncia un evento futuro: estreno, presentación, congreso, jornada, entrega de premios...) o una CRÓNICA/NOTICIA (relata algo ya ocurrido).
-
-Si es NOTA DE AGENDA (evento aún no celebrado):
-- TITULAR y SUBTÍTULO: verbo en PRESENTE ("Mercedes de Córdoba estrena...", "El Gobierno presenta...").
-- ENTRADILLA: anuncia el evento con pasado periodístico o presente.
-- CUERPO — descripción del evento (contenido, propuesta, participantes, características): PRESENTE ("el espectáculo utiliza...", "la propuesta parte de...", "en el escenario la acompañan...").
-- CUERPO — actos que aún no han ocurrido: FUTURO ("se celebrará un coloquio...").
-- CUERPO — datos biográficos o hechos ya consumados en el pasado: PASADO ("recibió en 2013 el Premio Nacional...").
-
-Si es CRÓNICA/NOTICIA (evento ya ocurrido):
-- TITULAR y SUBTÍTULO: verbo en PRESENTE.
-- ENTRADILLA y CUERPO: verbo en PASADO. Usa preferentemente el pretérito perfecto simple ("dijo", "anunció", "presentó"), propio de la prensa escrita de agencia.
-- ESTILO INDIRECTO — REALIDAD VIGENTE: cuando en una subordinada se describe una situación que SIGUE SIENDO VERDAD en el momento de escribir, usa PRESENTE aunque el verbo principal sea pasado.
-  BIEN: "explicó que lleva años reclamando..." (sigue reclamando hoy)
-  BIEN: "insistió en que el recinto debe tener las condiciones..." (sigue siendo necesario)
-  BIEN: "afirmó que la seguridad es lo primero" (principio permanente)
-  MAL:  "explicó que llevaba años reclamando..." (implica que ya no reclama)
-  MAL:  "insistió en que el recinto debía tener..." (implica que ya no es necesario)
-  REGLA: pregúntate si la acción subordinada es todavía cierta HOY. Si lo es → PRESENTE. Si solo fue cierta en el pasado → PASADO.
-
-NUNCA uses verbos en pasado para describir las características o el contenido de un evento que todavía no ha tenido lugar.
-
-ESTRUCTURA DEL TITULAR
-- Debe contener un verbo conjugado en presente.
-- Debe ser claro, directo y factual. Sin sensacionalismo.
-
-ENTRADILLA (LEAD)
-- Empieza siempre con el SUJETO. Nunca empieces con complemento circunstancial de tiempo, modo u otro.
-- Nunca empieces con "Ayer", "Hoy", "El pasado…", "En la tarde de…".
-- Recoge quién, qué, cuándo, dónde y por qué en pocas oraciones.
-
-CUERPO DEL TELETIPO
-- Oraciones cortas y sencillas. Evita subordinadas largas y complejas.
-- Sujeto y verbo principal NUNCA separados por coma.
-- Evita los gerundios. Solo son correctos en tiempos continuos ("estaba hablando").
-- Al mencionar el tiempo, usa la forma más breve posible: "ayer", nunca "ayer 12 de octubre" ni "el pasado 12 de octubre".
-- Máximo ~500 palabras en el cuerpo.
-
-CITAS Y DECLARACIONES
-- Un cargo es aposición explicativa (entre comas) cuando corresponde a una única persona.
-  BIEN: "El ministro del Interior, Juan Ignacio Zoido, dijo..."
-- No lleva comas cuando el cargo lo tienen varias personas.
-  BIEN: "El exministro del Interior Jorge Fernández Díaz dijo..."
-- NUNCA mezcles estilo directo e indirecto en la misma oración. Elige uno u otro.
-  MAL: "Se ha mostrado crítico con frases como 'nuestra abstención le permitirá gobernar'"
-  BIEN: "Se ha mostrado muy crítico. Ha asegurado que la abstención 'permitirá gobernar', pero ha advertido de que no implica 'un acuerdo'"
+${writingRules}
 
 DEBES DEVOLVER UN JSON VÁLIDO CON LOS SIGUIENTES CAMPOS:
 1. antetitulo: El antetítulo (3-6 palabras, sin verbo, enmarca el tema: "Economía", "Política exterior", "Acuerdo laboral"…).
@@ -205,9 +171,11 @@ DEBES DEVOLVER UN JSON VÁLIDO CON LOS SIGUIENTES CAMPOS:
 5. body: El cuerpo del teletipo (pasado, oraciones breves, máx ~500 palabras). IMPORTANTE: separa cada párrafo con una línea en blanco (\\n\\n entre párrafos). Mínimo 3 párrafos bien diferenciados.
 6. originalText: Transcripción limpia y completa del texto original proporcionado.
 `;
+}
 
 async function generatePressRelease(ai: GoogleGenAI, contentParts: any[]): Promise<PressReleaseResult> {
-    const parts = [...contentParts, { text: PRESS_RELEASE_INSTRUCTION }];
+    const writingRules = await loadWritingRules();
+    const parts = [...contentParts, { text: buildPressReleaseInstruction(writingRules) }];
     const response = await ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: [{ role: 'user', parts }],
