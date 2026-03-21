@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Javier Aldea
+ * Todos los derechos reservados.
+ * Este software es propiedad de Javier Aldea y solo es utilizable por Servimedia.
+ * Queda prohibida su reproducción, distribución o uso sin autorización expresa.
+ */
 
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { AnalysisResult as AnalysisResultType, PressReleaseResult as PressReleaseResultType, TopicDetail } from '../types';

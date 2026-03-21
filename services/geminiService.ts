@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Javier Aldea
+ * Todos los derechos reservados.
+ * Este software es propiedad de Javier Aldea y solo es utilizable por Servimedia.
+ * Queda prohibida su reproducción, distribución o uso sin autorización expresa.
+ */
 ﻿
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { AnalysisResult, PressReleaseResult, TopicDetail, TranscriptionSegment } from "../types";
@@ -763,4 +769,3 @@ const startLiveTranscription = async (
 };
 
 export const geminiService = { processAudio, processPressRelease, chatWithSource, genericChat, chatWithDocuments, verifyManualSelection, startLiveTranscription, suggestHeadlinesForTopic, extractRelevantFragments, generateTeletipoFromText };
-

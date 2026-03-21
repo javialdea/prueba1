@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Javier Aldea
+ * Todos los derechos reservados.
+ * Este software es propiedad de Javier Aldea y solo es utilizable por Servimedia.
+ * Queda prohibida su reproducción, distribución o uso sin autorización expresa.
+ */
 import React, { useState } from 'react';
 import { Lock, Mail, Loader2, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../services/supabase';

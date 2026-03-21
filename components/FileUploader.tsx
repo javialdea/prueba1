@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Javier Aldea
+ * Todos los derechos reservados.
+ * Este software es propiedad de Javier Aldea y solo es utilizable por Servimedia.
+ * Queda prohibida su reproducción, distribución o uso sin autorización expresa.
+ */
 import React, { useCallback, useState, useRef } from 'react';
 import { Upload, FileAudio, FileText, AlertCircle, X, Film, Loader2 } from 'lucide-react';
 import { FileState, AppMode } from '../types';
