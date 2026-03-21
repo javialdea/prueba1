@@ -43,6 +43,12 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
           </button>
         </div>
 
+        {/* Audio retention notice */}
+        <div className="mx-4 mt-3 mb-1 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 leading-snug">
+          <span className="mt-0.5 shrink-0">⚠️</span>
+          <span>Los archivos de audio se borran periódicamente para liberar espacio. Tus transcripciones siempre se guardarán, pero conserva los audios en tu ordenador si quieres mantenerlos.</span>
+        </div>
+
         <div className="flex-grow overflow-y-auto p-4 space-y-4">
           {history.length === 0 ? (
             <div className="text-center py-12 text-gray-400">
